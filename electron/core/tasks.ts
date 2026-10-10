@@ -23,10 +23,19 @@ export interface TaskEnv {
   compressImage?: (opts: ImageCompressOptions & { jobId: string }) => Promise<ImageEngineResult | void>
 }
 
-export interface CompressParams { preset: QualityPreset; customCrf?: number; customAudioBitrate?: string }
+export interface CompressParams {
+  preset: QualityPreset
+  customCrf?: number
+  customAudioBitrate?: string
+  targetSizeMB?: number
+}
 export interface ImageParams { preset: QualityPreset; format: ImageFormatChoice; customQuality?: number }
 export interface SeparateParams { mode: SeparateMode }
-export interface ConvertParams { format: string }
+export interface ConvertParams {
+  format: string
+  gifFps?: number
+  gifWidth?: number
+}
 export interface TrimParams { start: number; end: number; mode: TrimMode }
 
 export const PRESET_LABEL: Record<QualityPreset, string> = { high: '高质量', balanced: '平衡', small: '小体积' }
@@ -77,10 +86,14 @@ export async function compressTask(item: Readonly<QueueItem>, p: CompressParams,
   const info = await safeProbe(item.input)
   const audio = isAudioOnly(info, item.input)
   const ext = audio ? audioTargetFor(path.extname(item.input)).ext : '.mp4'
-  const suffix = `压缩_${p.customCrf !== undefined ? `crf${p.customCrf}` : PRESET_LABEL[p.preset]}`
+  const isTargetSize = typeof p.targetSizeMB === 'number' && p.targetSizeMB > 0
+  const suffix = isTargetSize
+    ? `压缩_目标${p.targetSizeMB}MB`
+    : `压缩_${p.customCrf !== undefined ? `crf${p.customCrf}` : PRESET_LABEL[p.preset]}`
   return withOutput(item.input, suffix, ext, env, ctx, (output) => compressMedia({
     jobId: ctx.jobId, input: item.input, output, info, preset: p.preset,
     customCrf: audio ? undefined : p.customCrf, customAudioBitrate: p.customAudioBitrate,
+    targetSizeMB: p.targetSizeMB,
     hwEncoder: audio ? null : hwFor(env), onProgress: ctx.onProgress
   }))
 }
@@ -90,7 +103,9 @@ export async function convertTask(item: Readonly<QueueItem>, p: ConvertParams, c
   const info = await safeProbe(item.input)
   const f = p.format.toLowerCase()
   return withOutput(item.input, '转换', `.${f}`, env, ctx, (output) => convertFormat({
-    jobId: ctx.jobId, input: item.input, output, info, format: f, hwEncoder: hwFor(env), onProgress: ctx.onProgress
+    jobId: ctx.jobId, input: item.input, output, info, format: f,
+    gifFps: p.gifFps, gifWidth: p.gifWidth,
+    hwEncoder: hwFor(env), onProgress: ctx.onProgress
   }))
 }
 

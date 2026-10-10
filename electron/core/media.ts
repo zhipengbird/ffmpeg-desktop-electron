@@ -120,26 +120,90 @@ async function runWithFallback(
   return { encoder: 'libx264' }
 }
 
+/**
+ * 根据目标文件大小（MB）和媒体时长（秒）计算目标视频码率（kbps）及音频码率。
+ * 预留 5% 容器开销（moov box / headers 等）以确保不超出限制。
+ */
+export function calcTargetBitrates(targetSizeMB: number, durationSec: number): { videoKbps: number; audioBitrate: string } {
+  const d = Math.max(0.5, durationSec)
+  const targetBytes = targetSizeMB * 1024 * 1024 * 0.95
+  const totalKbps = (targetBytes * 8) / (d * 1000)
+
+  let audioKbps = 128
+  if (totalKbps < 280) audioKbps = 64
+  else if (totalKbps < 500) audioKbps = 96
+
+  const videoKbps = Math.max(64, Math.round(totalKbps - audioKbps))
+  return { videoKbps, audioBitrate: `${audioKbps}k` }
+}
+
 export interface CompressOpts extends BaseOpts {
   preset: QualityPreset
   customCrf?: number
   customAudioBitrate?: string
+  targetSizeMB?: number
   hwEncoder?: string | null
 }
 
 export async function compressMedia(o: CompressOpts): Promise<MediaOpResult> {
   const info = o.info !== undefined ? o.info : await safeProbe(o.input)
   const duration = info?.duration || 0
+  const isTargetSize = typeof o.targetSizeMB === 'number' && o.targetSizeMB > 0
+
   if (isAudioOnly(info, o.input)) {
-    const bitrate = o.customAudioBitrate || AUDIO_PRESETS[o.preset]
+    let bitrate = o.customAudioBitrate || AUDIO_PRESETS[o.preset]
+    if (isTargetSize && duration > 0) {
+      const targetAudioKbps = Math.floor((o.targetSizeMB! * 1024 * 1024 * 0.95 * 8) / (Math.max(1, duration) * 1000))
+      bitrate = `${Math.min(320, Math.max(32, targetAudioKbps))}k`
+    }
     const ext = path.extname(o.output)
     await withTempOutput(o.output, (tmp) => runFfmpeg({
       jobId: o.jobId,
       args: ['-i', o.input, '-vn', '-map_metadata', '0', ...audioCodecArgsForExt(ext, bitrate), tmp],
       duration, onProgress: o.onProgress
     }))
-    return { output: o.output }
+    return { output: o.output, notice: isTargetSize ? `目标体积：${o.targetSizeMB} MB` : undefined }
   }
+
+  // 视频目标大小锁定模式：根据时长精确反算码率并通过限速控制体积
+  if (isTargetSize && duration > 0) {
+    const { videoKbps, audioBitrate } = calcTargetBitrates(o.targetSizeMB!, duration)
+    const audioBr = o.customAudioBitrate || audioBitrate
+    const maxRate = Math.round(videoKbps * 1.3)
+    const bufSize = Math.round(videoKbps * 2)
+
+    // 软件编码使用固定码率约束；硬件加速使用平台对应码率配置
+    const swTargetSpec: VideoEncoderSpec = {
+      name: 'libx264',
+      hardware: false,
+      args: ['-c:v', 'libx264', '-preset', 'medium', '-b:v', `${videoKbps}k`, '-maxrate', `${maxRate}k`, '-bufsize', `${bufSize}k`, '-pix_fmt', 'yuv420p'],
+      preInput: []
+    }
+
+    if (o.hwEncoder) {
+      const hw = hwEncoderSpec(o.hwEncoder, videoKbps)
+      try {
+        await withTempOutput(o.output, (tmp) => runFfmpeg({
+          jobId: o.jobId,
+          args: [...hw.preInput, '-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(hw), '-c:a', 'aac', '-b:a', audioBr, ...containerArgs(o.output), tmp],
+          duration, onProgress: o.onProgress
+        }))
+        return { output: o.output, encoder: o.hwEncoder, notice: `目标体积：${o.targetSizeMB} MB（码率 ${videoKbps}k）` }
+      } catch (e) {
+        if (e instanceof JobFailedError && e.job.code === 'CANCELLED') throw e
+        // 硬件编码异常降级到 libx264
+      }
+    }
+
+    await withTempOutput(o.output, (tmp) => runFfmpeg({
+      jobId: o.jobId,
+      args: ['-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(swTargetSpec), '-c:a', 'aac', '-b:a', audioBr, ...containerArgs(o.output), tmp],
+      duration, onProgress: o.onProgress
+    }))
+    return { output: o.output, encoder: 'libx264', notice: `目标体积：${o.targetSizeMB} MB（码率 ${videoKbps}k）` }
+  }
+
+  // 常规预设 (CRF) 模式
   const p = VIDEO_PRESETS[o.preset]
   const crf = o.customCrf ?? p.crf
   const audioBr = o.customAudioBitrate || p.audioBitrate
@@ -152,18 +216,36 @@ export async function compressMedia(o: CompressOpts): Promise<MediaOpResult> {
   return { output: o.output, ...r }
 }
 
-export const CONVERT_FORMATS = ['mp4', 'mkv', 'webm', 'mp3', 'aac', 'wav'] as const
+export const CONVERT_FORMATS = ['mp4', 'mkv', 'webm', 'gif', 'mp3', 'aac', 'wav'] as const
 export type ConvertFormat = (typeof CONVERT_FORMATS)[number]
 
 export interface ConvertOpts extends BaseOpts {
   format: string
   hwEncoder?: string | null
+  gifFps?: number
+  gifWidth?: number
 }
 
 export async function convertFormat(o: ConvertOpts): Promise<MediaOpResult> {
   const info = o.info !== undefined ? o.info : await safeProbe(o.input)
   const duration = info?.duration || 0
   const f = o.format.toLowerCase()
+
+  if (f === 'gif') {
+    if (info && !info.video) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有视频流，无法转换为动图 GIF' })
+    const fps = o.gifFps && [10, 15, 24, 30].includes(o.gifFps) ? o.gifFps : 15
+    const width = o.gifWidth && o.gifWidth > 0 ? o.gifWidth : 480
+    // 高清调色板双遍复合滤镜：lanczos 等比缩放 + palettegen 抽取最佳 256 色 + paletteuse bayer 抖动合成
+    const filter = `[0:v] fps=${fps},scale=${width}:-1:flags=lanczos,split [a][b]; [a] palettegen=reserve_transparent=0:stats_mode=diff [p]; [b][p] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`
+    await withTempOutput(o.output, (tmp) => runFfmpeg({
+      jobId: o.jobId,
+      args: ['-i', o.input, '-vf', filter, '-an', tmp],
+      duration,
+      onProgress: o.onProgress
+    }))
+    return { output: o.output, encoder: 'palettegen+paletteuse' }
+  }
+
   if (f === 'mp4' || f === 'mkv') {
     if (info && !info.video) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有视频流，无法转换为视频格式（请选择音频格式）' })
     const r = await withTempOutput(o.output, (tmp) => runWithFallback(
