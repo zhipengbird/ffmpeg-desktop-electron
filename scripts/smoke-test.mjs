@@ -145,6 +145,17 @@ await test('硬件编码运行时失败 → 自动回退 libx264 并提示', asy
   return r.notice
 })
 
+await test('锁定目标文件大小压缩（Target Size 模式）', async () => {
+  const out = path.join(work, 'c_target_size.mp4')
+  const r = await core.compressMedia({ jobId: nextJob(), input: long, output: out, preset: 'balanced', targetSizeMB: 0.15 })
+  const s = size(out)
+  assert(r.notice && r.notice.includes('目标体积'), '缺少目标大小 notice')
+  assert(s > 0 && s <= 0.15 * 1024 * 1024 * 1.05, `超出目标上限: ${s} B`)
+  const p = probe(out)
+  assert(p.v?.codec_name === 'h264', '编码不符')
+  return `${size(long)} → ${s} B（限制 0.15 MB，实际 ${(s / 1024 / 1024).toFixed(3)} MB）`
+})
+
 // =====================================================
 console.log('\n【2】格式转换')
 for (const [fmt, vcodec, acodec] of [['mp4', 'h264', 'aac'], ['webm', 'vp9', 'opus'], ['mp3', null, 'mp3'], ['wav', null, 'pcm_s16le']]) {
@@ -159,6 +170,17 @@ for (const [fmt, vcodec, acodec] of [['mp4', 'h264', 'aac'], ['webm', 'vp9', 'op
     return `${vcodec || '-'} / ${acodec}, ${size(out)} B`
   })
 }
+
+await test('转换为动图 GIF（双遍调色板高清引擎）', async () => {
+  const out = path.join(work, 'conv_palette.gif')
+  const r = await core.convertFormat({ jobId: nextJob(), input: sampleMp4, output: out, format: 'gif', gifFps: 10, gifWidth: 320 })
+  assert(r.encoder === 'palettegen+paletteuse', `encoder=${r.encoder}`)
+  const p = probe(out)
+  assert(p.v?.codec_name === 'gif', '非 gif')
+  assert(p.v?.width === 320, `宽度应缩放到 320，实为 ${p.v?.width}`)
+  assert(!p.a, '动图不应含音频流')
+  return `gif 320x${p.v.height}, ${size(out)} B`
+})
 
 // =====================================================
 console.log('\n【3】音视频分离')
