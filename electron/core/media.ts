@@ -216,7 +216,7 @@ export async function compressMedia(o: CompressOpts): Promise<MediaOpResult> {
   return { output: o.output, ...r }
 }
 
-export const CONVERT_FORMATS = ['mp4', 'mkv', 'webm', 'gif', 'mp3', 'aac', 'wav'] as const
+export const CONVERT_FORMATS = ['mp4', 'mkv', 'webm', 'gif', 'webp', 'mp3', 'aac', 'wav'] as const
 export type ConvertFormat = (typeof CONVERT_FORMATS)[number]
 
 export interface ConvertOpts extends BaseOpts {
@@ -244,6 +244,20 @@ export async function convertFormat(o: ConvertOpts): Promise<MediaOpResult> {
       onProgress: o.onProgress
     }))
     return { output: o.output, encoder: 'palettegen+paletteuse' }
+  }
+
+  if (f === 'webp') {
+    if (info && !info.video) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有视频流，无法转换为动图 WebP' })
+    const fps = o.gifFps && [10, 15, 24, 30].includes(o.gifFps) ? o.gifFps : 15
+    const width = o.gifWidth && o.gifWidth > 0 ? o.gifWidth : 480
+    const filter = `fps=${fps},scale=${width}:-1:flags=lanczos`
+    await withTempOutput(o.output, (tmp) => runFfmpeg({
+      jobId: o.jobId,
+      args: ['-i', o.input, '-vcodec', 'libwebp', '-lossless', '0', '-compression_level', '4', '-q:v', '75', '-loop', '0', '-vf', filter, '-an', tmp],
+      duration,
+      onProgress: o.onProgress
+    }))
+    return { output: o.output, encoder: 'libwebp' }
   }
 
   if (f === 'mp4' || f === 'mkv') {

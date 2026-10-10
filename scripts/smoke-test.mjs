@@ -182,6 +182,17 @@ await test('转换为动图 GIF（双遍调色板高清引擎）', async () => {
   return `gif 320x${p.v.height}, ${size(out)} B`
 })
 
+await test('转换为动图 WebP（Animated WebP 引擎）', async () => {
+  const out = path.join(work, 'conv_anim.webp')
+  const r = await core.convertFormat({ jobId: nextJob(), input: sampleMp4, output: out, format: 'webp', gifFps: 15, gifWidth: 320 })
+  assert(r.encoder === 'libwebp', `encoder=${r.encoder}`)
+  const meta = await sharp(out).metadata()
+  assert(meta.format === 'webp', `非 webp 格式: ${meta.format}`)
+  assert(meta.width === 320, `宽度应缩放到 320，实为 ${meta.width}`)
+  assert(meta.pages && meta.pages > 1, `应为多帧动画，实为 ${meta.pages} 帧`)
+  return `webp 320x${meta.height} (${meta.pages} 帧，循环=${meta.loop})，${size(out)} B`
+})
+
 // =====================================================
 console.log('\n【3】音视频分离')
 await test('提取音频（MP3，无视频流）', async () => {
