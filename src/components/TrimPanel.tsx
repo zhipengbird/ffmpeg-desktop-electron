@@ -126,36 +126,63 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
     setEnd(Math.max(s + 0.05, e))
   }, [])
 
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showFeedback = useCallback((msg: string) => {
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
+    setFeedback(msg)
+    feedbackTimer.current = setTimeout(() => setFeedback(null), 1600)
+  }, [])
+
   const markIn = useCallback(() => {
-    setStart(Math.min(current, Math.max(0, end - 0.05)))
-  }, [current, end])
+    const val = Math.min(current, Math.max(0, end - 0.05))
+    setStart(val)
+    showFeedback(`📍 起点已设为 ${formatPreciseTime(val)}`)
+  }, [current, end, showFeedback])
+
   const markOut = useCallback(() => {
-    setEnd(Math.max(current, start + 0.05))
-  }, [current, start])
+    const val = Math.max(current, start + 0.05)
+    setEnd(val)
+    showFeedback(`🏁 终点已设为 ${formatPreciseTime(val)}`)
+  }, [current, start, showFeedback])
 
   // 键盘快捷键：I/[ 起点 / O/] 终点 / 空格 播放暂停 / ←→ 微调 / Esc 取消
+  // 采用 e.code (物理键码) + e.key 兜底，完美兼容中文输入法环境（如输入法打出【】）
   useEffect(() => {
     if (!file || duration <= 0 || !active) return
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
       const k = e.key.toLowerCase()
-      if (k === 'i' || e.key === '[') { e.preventDefault(); markIn() }
-      else if (k === 'o' || e.key === ']') { e.preventDefault(); markOut() }
-      else if (e.key === 'Escape' && job.running) { e.preventDefault(); job.cancel() }
-      else if (e.code === 'Space') {
+      const isMarkIn = e.code === 'BracketLeft' || e.code === 'KeyI' || e.key === '[' || e.key === '【' || k === 'i'
+      const isMarkOut = e.code === 'BracketRight' || e.code === 'KeyO' || e.key === ']' || e.key === '】' || k === 'o'
+
+      if (isMarkIn) {
+        e.preventDefault()
+        markIn()
+      } else if (isMarkOut) {
+        e.preventDefault()
+        markOut()
+      } else if (e.key === 'Escape' && job.running) {
+        e.preventDefault()
+        job.cancel()
+      } else if (e.code === 'Space') {
         e.preventDefault()
         // 避免焦点按钮在 keyup 时再次被“点击”
         if ((document.activeElement as HTMLElement | null)?.tagName === 'BUTTON') (document.activeElement as HTMLElement).blur()
         togglePlay()
-      }
-      else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement)?.getAttribute?.('role')) {
+      } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !(e.target as HTMLElement)?.getAttribute?.('role')) {
         e.preventDefault()
         const step = e.shiftKey ? 1 : 0.1
-        seek(current + (e.key === 'ArrowLeft' ? -step : step))
+        const isLeft = e.key === 'ArrowLeft' || e.code === 'ArrowLeft'
+        seek(current + (isLeft ? -step : step))
       }
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
+    }
   }, [file, duration, markIn, markOut, togglePlay, seek, current, active, job])
 
   // 切换到其他标签时暂停预览
@@ -219,6 +246,7 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
                 <div className="ph-sub">可拖动下方时间轴或直接输入时间</div>
               </div>
             )}
+            {feedback && <div className="trim-toast">{feedback}</div>}
           </div>
 
           <div className="player-bar">
@@ -254,7 +282,7 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
               <div className="static-value">{formatPreciseTime(segLen)}</div>
             </div>
           </div>
-          <div className="shortcut-tip">快捷键：<kbd>I</kbd> 或 <kbd>[</kbd> 设为起点 · <kbd>O</kbd> 或 <kbd>]</kbd> 设为终点 · <kbd>空格</kbd> 播放/暂停 · <kbd>←</kbd><kbd>→</kbd> 逐帧微调（Shift 加速） · <kbd>Esc</kbd> 取消</div>
+          <div className="shortcut-tip">快捷键：<kbd>I</kbd> 或 <kbd>[</kbd> 将播放头设为起点 · <kbd>O</kbd> 或 <kbd>]</kbd> 设为终点 · <kbd>空格</kbd> 播放/暂停 · <kbd>←</kbd><kbd>→</kbd> 微调 · <kbd>Esc</kbd> 取消</div>
         </div>
       )}
 
