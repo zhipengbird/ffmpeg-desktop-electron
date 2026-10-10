@@ -65,6 +65,8 @@ export interface Settings {
   hwEncoder: string
   /** 隐私脱敏：是否擦除 GPS 坐标、相机设备、录制时间等元数据 */
   stripMetadata: boolean
+  /** 后台安静防卡顿模式：降低进程优先级并限制线程占用，防卡顿防风扇暴鸣 */
+  quietMode: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -78,7 +80,8 @@ export const DEFAULT_SETTINGS: Settings = {
   imageConcurrency: 4,
   hwAccel: false,
   hwEncoder: 'auto',
-  stripMetadata: false
+  stripMetadata: false,
+  quietMode: false
 }
 
 export interface EncoderTest {

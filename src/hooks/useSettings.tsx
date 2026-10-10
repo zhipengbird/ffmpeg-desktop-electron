@@ -6,6 +6,8 @@ interface Ctx {
   loaded: boolean
   update: (patch: Partial<Settings>) => Promise<void>
   reset: () => Promise<void>
+  exportSettings: () => Promise<{ success: boolean; path?: string; error?: string }>
+  importSettings: () => Promise<{ success: boolean; settings?: Settings; error?: string }>
   hw: EncoderInfo
   redetect: () => Promise<void>
   platform: string
@@ -31,10 +33,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings(await window.api.settings.set(patch))
   }, [])
   const reset = useCallback(async () => { setSettings(await window.api.settings.reset()) }, [])
+  const exportSettings = useCallback(async () => await window.api.settings.export(), [])
+  const importSettings = useCallback(async () => {
+    const res = await window.api.settings.import()
+    if (res.success && res.settings) {
+      setSettings(res.settings)
+    }
+    return res
+  }, [])
   const redetect = useCallback(async () => { setHw(await window.api.hw.redetect()) }, [])
 
   return (
-    <SettingsContext.Provider value={{ settings, loaded, update, reset, hw, redetect, platform: window.api.platform }}>
+    <SettingsContext.Provider value={{ settings, loaded, update, reset, exportSettings, importSettings, hw, redetect, platform: window.api.platform }}>
       {children}
     </SettingsContext.Provider>
   )

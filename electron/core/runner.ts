@@ -1,3 +1,4 @@
+import os from 'os'
 import { spawn, type ChildProcess } from 'child_process'
 import { getFfmpegPath } from './binaries'
 import { JobFailedError, mapError } from './errors'
@@ -8,6 +9,15 @@ export type ProgressCallback = (percent: number | null, timemark?: string) => vo
 
 const activeJobs = new Map<string, ChildProcess>()
 const cancelledJobs = new Set<string>()
+let globalQuietMode = false
+
+export function setGlobalQuietMode(enabled: boolean): void {
+  globalQuietMode = Boolean(enabled)
+}
+
+export function getGlobalQuietMode(): boolean {
+  return globalQuietMode
+}
 
 export function cancelJob(jobId: string): boolean {
   const proc = activeJobs.get(jobId)
@@ -52,6 +62,8 @@ export interface RunOptions {
   onProgress?: ProgressCallback
   /** 进度回调节流间隔（毫秒） */
   throttleMs?: number
+  /** 是否启用后台安静防卡顿模式（留出一半 CPU 核心并降低系统调度优先级，未提供时遵循全局设置） */
+  quietMode?: boolean
 }
 
 /**
@@ -62,16 +74,27 @@ export interface RunOptions {
 export function runFfmpeg(opts: RunOptions): Promise<void> {
   const { jobId, args, duration, onProgress } = opts
   const throttle = opts.throttleMs ?? 200
+  const isQuiet = opts.quietMode ?? globalQuietMode
   return new Promise((resolve, reject) => {
     if (cancelledJobs.has(jobId)) {
       cancelledJobs.delete(jobId)
       reject(new JobFailedError({ code: 'CANCELLED', message: '任务已取消' }))
       return
     }
-    const fullArgs = ['-y', '-hide_banner', '-progress', 'pipe:1', ...args]
+    const threadArgs = isQuiet && !args.includes('-threads')
+      ? ['-threads', String(Math.max(1, Math.floor((os.cpus()?.length || 4) / 2)))]
+      : []
+    const fullArgs = ['-y', '-hide_banner', '-progress', 'pipe:1', ...threadArgs, ...args]
     let proc: ChildProcess
     try {
       proc = spawn(getFfmpegPath(), fullArgs, { windowsHide: true })
+      if (isQuiet && proc.pid) {
+        try {
+          os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
+        } catch {
+          // 部分环境或系统权限限制时忽略
+        }
+      }
     } catch (err) {
       reject(new JobFailedError(mapError(err)))
       return

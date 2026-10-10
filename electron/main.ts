@@ -6,6 +6,7 @@ import { initFfmpegPaths } from './ffmpeg'
 import { ImageEngine } from './image-engine'
 import {
   TaskQueue, SettingsStore, PathReservations, detectHwEncoders, cancelJob, cancelAllJobs,
+  setGlobalQuietMode, sanitizeSettings,
   probeMedia, mapError, JobFailedError, parseRange, mimeFor, mediaUrlToPath, pathToMediaUrl,
   compressTask, convertTask, separateTask, imageTask, trimTask, mergeTask, extractFrame,
   generateContactSheet, extractAudioWaveform, detectSilence, jumpCutMedia, reframeToVertical,
@@ -248,6 +249,7 @@ function getQueue(kind: QueueKind): TaskQueue<unknown> {
 
 function applySettings(s: Settings): void {
   for (const [kind, q] of queues) q.setConcurrency(kind === 'image' ? s.imageConcurrency : s.concurrency)
+  setGlobalQuietMode(s.quietMode)
 }
 
 // ---------- media:// 协议 ----------
@@ -294,6 +296,7 @@ app.whenReady().then(() => {
   imageEngine = new ImageEngine()
   void imageEngine.warmup()
   settingsStore = new SettingsStore(path.join(app.getPath('userData'), 'settings.json'))
+  applySettings(settingsStore.get())
   makeQueue('compress', compressTask)
   makeQueue('convert', convertTask)
   makeQueue('separate', separateTask)
@@ -664,6 +667,43 @@ ipcMain.handle('settings:reset', () => {
   applySettings(s)
   send('settings:changed', s)
   return s
+})
+ipcMain.handle('settings:export', async () => {
+  if (!mainWindow) return { success: false }
+  const res = await dialog.showSaveDialog(mainWindow, {
+    title: '导出转码与性能配置预设',
+    defaultPath: 'ffmpeg-desktop-settings.json',
+    filters: [{ name: 'JSON 配置文件', extensions: ['json'] }]
+  })
+  if (res.canceled || !res.filePath) return { success: false }
+  try {
+    fs.writeFileSync(res.filePath, JSON.stringify(settingsStore.get(), null, 2), 'utf8')
+    return { success: true, path: res.filePath }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, error: msg }
+  }
+})
+ipcMain.handle('settings:import', async () => {
+  if (!mainWindow) return { success: false }
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: '导入转码与性能配置预设',
+    properties: ['openFile'],
+    filters: [{ name: 'JSON 配置文件', extensions: ['json'] }]
+  })
+  if (res.canceled || !res.filePaths?.[0]) return { success: false }
+  try {
+    const raw = fs.readFileSync(res.filePaths[0], 'utf8')
+    const parsed = JSON.parse(raw)
+    const sanitized = sanitizeSettings(parsed)
+    const updated = settingsStore.replace(sanitized)
+    applySettings(updated)
+    send('settings:changed', updated)
+    return { success: true, settings: updated }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, error: `导入失败：配置文件格式不正确 (${msg})` }
+  }
 })
 ipcMain.handle('settings:path', () => path.join(app.getPath('userData'), 'settings.json'))
 

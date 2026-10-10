@@ -5,6 +5,29 @@
 
 ---
 
+## [v2.5.0] - 2026-10-10
+
+### 🌟 新增功能 (Features)
+- **⚡ 全链路 GPU 硬件加速 (Hardware Decoding & Encoding)**：
+  - 针对主流操作系统与独立显卡，打通从解码到编码的全链路硬件加速，彻底释放 CPU 算力；
+  - 运行时根据环境自动注入硬件解码预输入参数：macOS VideoToolbox (`-hwaccel videotoolbox`)、NVIDIA CUDA/NVENC (`-hwaccel cuda`)、Intel QSV (`-hwaccel qsv`)、AMD AMF (`-hwaccel d3d11va`)、Linux VA-API (`-hwaccel vaapi`)；
+  - 避免像素帧在显存与系统内存间频繁拷贝，极大加速超高清与 4K/60fps 视频压缩、转码与处理吞吐。
+- **🤫 后台安静防卡顿模式 (Quiet Mode / Process Niceness)**：
+  - 设置面板新增「后台安静防卡顿模式」开关；
+  - 基于 Node.js `os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)` 在进程启动时降级子进程优先级（兼容 Windows/macOS/Linux）；
+  - 启动 FFmpeg 时自动限制线程占用至 `Math.max(1, Math.floor(os.cpus().length / 2))`，确保至少为系统留出一半核心算力；
+  - 彻底解决批量长时间视频处理过程中电脑发烫、风扇暴鸣、敲代码与开会议卡顿的痛点。
+- **📦 参数配置方案导入与导出 (Presets Import & Export)**：
+  - 设置面板新增「配置方案导入与导出」管理卡片；
+  - 支持一键导出当前个性化转码并发数、硬件加速偏好、重名策略与安静模式等为 `.json` 配置文件；
+  - 跨设备一键导入并应用，内置 `sanitizeSettings` 严格数据校验与清洗过滤机制，自动剔除非法字段并对并发数等进行边界约束保护；
+  - 提供即时操作反馈横幅与一键恢复默认配置。
+
+### 🧪 自动化测试
+- 自动化冒烟测试套件扩展至 **62 项全流程自动化测试**（新增全链路 GPU 硬件加速 spec 校验、后台安静防卡顿模式调度控制、预设配置导入与数据安全清洗），持续保持 100% 满分通过。
+
+---
+
 ## [v2.4.0] - 2026-10-10
 
 ### 🌟 新增功能 (Features)

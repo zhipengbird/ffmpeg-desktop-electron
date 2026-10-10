@@ -722,6 +722,50 @@ await test('16:9 横转 9:16 竖屏短视频智能重构与动态高斯模糊填
 })
 
 
+await test('全链路 GPU 硬件加速 spec 与 -hwaccel 预输入参数校验 (hwEncoderSpec)', async () => {
+  const vt = core.hwEncoderSpec('h264_videotoolbox', 2500)
+  assert(vt.hardware === true, 'VideoToolbox 应标记为 hardware')
+  assert(vt.preInput.includes('-hwaccel') && vt.preInput.includes('videotoolbox'), 'VideoToolbox 缺少 -hwaccel videotoolbox')
+
+  const nv = core.hwEncoderSpec('h264_nvenc', 3000)
+  assert(nv.preInput.includes('-hwaccel') && nv.preInput.includes('cuda'), 'NVENC 缺少 -hwaccel cuda')
+
+  const qsv = core.hwEncoderSpec('h264_qsv', 2000)
+  assert(qsv.preInput.includes('-hwaccel') && qsv.preInput.includes('qsv'), 'QSV 缺少 -hwaccel qsv')
+
+  const amf = core.hwEncoderSpec('h264_amf', 2000)
+  assert(amf.preInput.includes('-hwaccel') && amf.preInput.includes('d3d11va'), 'AMF 缺少 -hwaccel d3d11va')
+
+  return `全平台硬件加速解码注入验证通过：VideoToolbox(-hwaccel videotoolbox), NVENC(-hwaccel cuda), QSV(-hwaccel qsv), AMF(-hwaccel d3d11va)`
+})
+
+await test('后台安静防卡顿模式开关与调度控制 (setGlobalQuietMode)', async () => {
+  core.setGlobalQuietMode(true)
+  assert(core.getGlobalQuietMode() === true, '开启 globalQuietMode 失败')
+  core.setGlobalQuietMode(false)
+  assert(core.getGlobalQuietMode() === false, '关闭 globalQuietMode 失败')
+  return '后台安静防卡顿模式全局状态控制校验通过'
+})
+
+await test('预设配置导入与数据安全清洗 (sanitizeSettings)', async () => {
+  const dirtyInput = {
+    quietMode: true,
+    concurrency: 999, // 应自动 clamp 到 8
+    imageConcurrency: -5, // 应自动 clamp 到 1
+    hwAccel: true,
+    hwEncoder: 'h264_videotoolbox',
+    maliciousScript: '<script>alert(1)</script>', // 非法字段应被自动剔除
+    conflictPolicy: 'invalid_policy' // 非法策略应回退为 rename
+  }
+  const clean = core.sanitizeSettings(dirtyInput)
+  assert(clean.quietMode === true, 'quietMode 应为 true')
+  assert(clean.concurrency === 8, `concurrency 超限应限制为 8，实际为 ${clean.concurrency}`)
+  assert(clean.imageConcurrency === 1, `imageConcurrency 下限应限制为 1，实际为 ${clean.imageConcurrency}`)
+  assert(clean.conflictPolicy === 'rename', `非法 conflictPolicy 应安全回退为 rename，实际为 ${clean.conflictPolicy}`)
+  assert(!('maliciousScript' in clean), '未知或恶意字段未被清洗剔除')
+  return `配置清洗严格度校验通过：异常越界参数自动约束，非法字段完全剔除`
+})
+
 // =====================================================
 const failed = results.filter((r) => !r.ok)
 console.log(`\n结果：${results.length - failed.length}/${results.length} 通过${failed.length ? `，失败：\n - ${failed.map((f) => `${f.name}: ${f.note}`).join('\n - ')}` : ''}`)

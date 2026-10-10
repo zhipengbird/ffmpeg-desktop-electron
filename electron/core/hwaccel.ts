@@ -81,23 +81,46 @@ export function targetBitrateKbps(quality: QualityPreset | { crf: number }, ctx:
 export function hwEncoderSpec(name: string, kbps: number): VideoEncoderSpec {
   const rate = ['-b:v', `${kbps}k`, '-maxrate', `${Math.round(kbps * 1.5)}k`, '-bufsize', `${kbps * 2}k`]
   if (name.endsWith('_videotoolbox')) {
-    // VideoToolbox 在部分机型上不支持 DataRateLimits（maxrate），只设平均码率最稳妥
+    // VideoToolbox 在部分机型上不支持 DataRateLimits（maxrate），只设平均码率最稳妥；注入 -hwaccel 全链路加速
     return {
-      name, preInput: [], hardware: true,
+      name,
+      preInput: ['-hwaccel', 'videotoolbox'],
+      hardware: true,
       args: ['-c:v', name, '-b:v', `${kbps}k`, '-pix_fmt', 'yuv420p', ...(name.startsWith('hevc') ? ['-tag:v', 'hvc1'] : [])]
     }
   }
   if (name.endsWith('_nvenc')) {
-    return { name, preInput: [], hardware: true, args: ['-c:v', name, '-preset', 'p5', '-rc', 'vbr', ...rate, '-pix_fmt', 'yuv420p'] }
+    return {
+      name,
+      preInput: ['-hwaccel', 'cuda'],
+      hardware: true,
+      args: ['-c:v', name, '-preset', 'p5', '-rc', 'vbr', ...rate, '-pix_fmt', 'yuv420p']
+    }
   }
   if (name.endsWith('_qsv')) {
-    return { name, preInput: [], hardware: true, args: ['-c:v', name, '-preset', 'medium', ...rate, '-pix_fmt', 'nv12'] }
+    return {
+      name,
+      preInput: ['-hwaccel', 'qsv'],
+      hardware: true,
+      args: ['-c:v', name, '-preset', 'medium', ...rate, '-pix_fmt', 'nv12']
+    }
   }
   if (name.endsWith('_amf')) {
-    return { name, preInput: [], hardware: true, args: ['-c:v', name, '-quality', 'balanced', '-rc', 'vbr_peak', ...rate, '-pix_fmt', 'yuv420p'] }
+    return {
+      name,
+      preInput: ['-hwaccel', 'd3d11va'],
+      hardware: true,
+      args: ['-c:v', name, '-quality', 'balanced', '-rc', 'vbr_peak', ...rate, '-pix_fmt', 'yuv420p']
+    }
   }
   if (name.endsWith('_vaapi')) {
-    return { name, preInput: ['-vaapi_device', VAAPI_DEVICE], vf: 'format=nv12,hwupload', hardware: true, args: ['-c:v', name, ...rate] }
+    return {
+      name,
+      preInput: ['-vaapi_device', VAAPI_DEVICE, '-hwaccel', 'vaapi', '-hwaccel_output_format', 'vaapi'],
+      vf: 'format=nv12,hwupload',
+      hardware: true,
+      args: ['-c:v', name, ...rate]
+    }
   }
   return { name, preInput: [], hardware: true, args: ['-c:v', name, ...rate] }
 }

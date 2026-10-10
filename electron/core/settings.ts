@@ -26,7 +26,8 @@ export function sanitizeSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS
     imageConcurrency: clampInt(pick('imageConcurrency'), 1, 16, base.imageConcurrency),
     hwAccel: bool('hwAccel'),
     hwEncoder: typeof pick('hwEncoder') === 'string' && pick('hwEncoder') ? (pick('hwEncoder') as string) : 'auto',
-    stripMetadata: bool('stripMetadata')
+    stripMetadata: bool('stripMetadata'),
+    quietMode: bool('quietMode')
   }
 }
 
@@ -50,6 +51,19 @@ export class SettingsStore {
 
   update(patch: Partial<Settings>): Settings {
     this.value = sanitizeSettings({ ...this.value, ...patch }, this.value)
+    try {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true })
+      const tmp = `${this.file}.tmp`
+      fs.writeFileSync(tmp, JSON.stringify(this.value, null, 2), 'utf8')
+      fs.renameSync(tmp, this.file)
+    } catch (e) {
+      console.error('[settings] 保存失败', e)
+    }
+    return this.get()
+  }
+
+  replace(newSettings: Settings): Settings {
+    this.value = sanitizeSettings(newSettings, DEFAULT_SETTINGS)
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true })
       const tmp = `${this.file}.tmp`

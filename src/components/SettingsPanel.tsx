@@ -36,14 +36,42 @@ const POLICIES: { id: ConflictPolicy; label: string }[] = [
 ]
 
 export default function SettingsPanel() {
-  const { settings, update, reset, hw, redetect, platform } = useSettings()
+  const { settings, update, reset, exportSettings, importSettings, hw, redetect, platform } = useSettings()
   const [file, setFile] = useState('')
   const [detecting, setDetecting] = useState(false)
+  const [actionMsg, setActionMsg] = useState<{ text: string; error?: boolean } | null>(null)
   useEffect(() => { window.api.settings.path().then(setFile) }, [])
 
   const chooseDir = async () => {
     const dir = await window.api.openDirectory()
     if (dir) await update({ outputMode: 'custom', outputDir: dir })
+  }
+
+  const handleExport = async () => {
+    setActionMsg(null)
+    const res = await exportSettings()
+    if (res.success && res.path) {
+      setActionMsg({ text: `配置已成功导出至：${res.path}`, error: false })
+    } else if (res.error) {
+      setActionMsg({ text: res.error, error: true })
+    }
+  }
+
+  const handleImport = async () => {
+    setActionMsg(null)
+    const res = await importSettings()
+    if (res.success) {
+      setActionMsg({ text: '配置预设已成功导入并生效！', error: false })
+    } else if (res.error) {
+      setActionMsg({ text: res.error, error: true })
+    }
+  }
+
+  const handleReset = async () => {
+    if (window.confirm('确定要恢复全部默认设置吗？')) {
+      await reset()
+      setActionMsg({ text: '已恢复所有选项为默认值', error: false })
+    }
   }
 
   const working = hw.tested.filter((t) => t.ok)
@@ -93,7 +121,13 @@ export default function SettingsPanel() {
       </div>
 
       <div className="panel">
-        <div className="panel-title">性能</div>
+        <div className="panel-title">性能与防卡顿</div>
+        <Row
+          title="后台安静防卡顿模式 (Quiet Mode)"
+          desc="降低 FFmpeg 进程系统调度优先级并限制 CPU 占用至一半核心数，转码期间前台敲代码、办公、开视频会议不卡顿，防止风扇暴鸣。"
+        >
+          <Toggle checked={settings.quietMode} onChange={(v) => update({ quietMode: v })} />
+        </Row>
         <Row title="音视频并发数" desc="同时处理的音视频任务数（压缩 / 分离 / 转换），默认 2">
           <select className="select" value={settings.concurrency} onChange={(e) => update({ concurrency: Number(e.target.value) })}>
             {[1, 2, 3, 4, 6, 8].map((n) => <option key={n} value={n}>{n}</option>)}
@@ -105,8 +139,8 @@ export default function SettingsPanel() {
           </select>
         </Row>
         <Row
-          title="硬件加速（视频编码）"
-          desc="用于压缩、MP4/MKV 转换与精准裁剪。硬件编码速度快但同码率画质略低；运行时失败会自动回退到 libx264。"
+          title="硬件加速（全链路 GPU 解码与编码）"
+          desc="针对 Apple VideoToolbox、NVIDIA CUDA/NVENC、Intel QSV、AMD AMF 与 Linux VAAPI 注入硬件解码与编码，显著降低 CPU 负载并提升吞吐。"
         >
           <Toggle checked={settings.hwAccel} onChange={(v) => update({ hwAccel: v })} />
         </Row>
@@ -146,9 +180,37 @@ export default function SettingsPanel() {
         </div>
       </div>
 
+      <div className="panel">
+        <div className="panel-title">预设与配置管理</div>
+        <Row
+          title="配置方案导入与导出"
+          desc="将当前转码并发、GPU 硬件加速偏好、重名策略与安静模式等导出为 JSON 文件，或跨设备一键导入恢复。"
+        >
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn btn-primary btn-sm" onClick={handleExport}>导出预设…</button>
+            <button className="btn btn-secondary btn-sm" onClick={handleImport}>导入预设…</button>
+            <button className="btn btn-ghost btn-sm" onClick={handleReset}>恢复默认设置</button>
+          </div>
+        </Row>
+        {actionMsg && (
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 13,
+              padding: '6px 12px',
+              borderRadius: 6,
+              background: actionMsg.error ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+              color: actionMsg.error ? '#f87171' : '#4ade80',
+              border: `1px solid ${actionMsg.error ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
+            }}
+          >
+            {actionMsg.text}
+          </div>
+        )}
+      </div>
+
       <div className="settings-footer">
         <span className="muted">设置文件：<code>{file}</code></span>
-        <button className="btn btn-ghost btn-sm" onClick={() => reset()}>恢复默认设置</button>
       </div>
     </>
   )

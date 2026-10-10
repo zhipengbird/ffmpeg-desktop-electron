@@ -66,6 +66,8 @@ const api = {
     get: () => ipcRenderer.invoke('settings:get') as Promise<Settings>,
     set: (patch: Partial<Settings>) => ipcRenderer.invoke('settings:set', patch) as Promise<Settings>,
     reset: () => ipcRenderer.invoke('settings:reset') as Promise<Settings>,
+    export: () => ipcRenderer.invoke('settings:export') as Promise<{ success: boolean; path?: string }>,
+    import: () => ipcRenderer.invoke('settings:import') as Promise<{ success: boolean; settings?: Settings; error?: string }>,
     path: () => ipcRenderer.invoke('settings:path') as Promise<string>,
     onChanged: (cb: (s: Settings) => void) => listen<Settings>('settings:changed', cb)
   },
