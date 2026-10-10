@@ -79,8 +79,18 @@ export class ImageEngine {
 
   async compress(opts: ImageCompressOptions & { jobId: string }): Promise<{ notice?: string }> {
     if (!this.isolated) {
-      await compressImage(opts)
-      return {}
+      if (!this.sharpBroken) {
+        try {
+          await compressImage(opts)
+          return {}
+        } catch (e) {
+          const msg = (e as Error)?.message || String(e)
+          console.warn(`[image] sharp 图片引擎执行异常（${msg}），本次会话自动降级为 FFmpeg 编码`)
+          this.sharpBroken = true
+        }
+      }
+      await compressImageWithFfmpeg(opts)
+      return { notice: FFMPEG_FALLBACK_NOTICE }
     }
     if (!this.sharpBroken) {
       try {
@@ -95,7 +105,18 @@ export class ImageEngine {
   }
 
   async info(filePath: string): Promise<{ width: number; height: number; format: string; size: number }> {
-    if (!this.isolated) return getImageInfo(filePath)
+    if (!this.isolated) {
+      if (!this.sharpBroken) {
+        try {
+          return await getImageInfo(filePath)
+        } catch (e) {
+          const msg = (e as Error)?.message || String(e)
+          console.warn(`[image] sharp 读取元数据失败（${msg}），降级为 ffprobe`)
+          this.sharpBroken = true
+        }
+      }
+      return getImageInfoWithFfprobe(filePath)
+    }
     if (!this.sharpBroken) {
       try {
         return await this.call('info', { path: filePath })

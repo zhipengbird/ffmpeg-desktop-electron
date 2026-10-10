@@ -24,6 +24,12 @@ importers:
         specifier: ^0.33.5
         version: 0.33.5
     devDependencies:
+      '@img/sharp-libvips-win32-x64':
+        specifier: 1.0.4
+        version: 1.0.4
+      '@img/sharp-win32-x64':
+        specifier: 0.33.5
+        version: 0.33.5
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.31
@@ -379,6 +385,9 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [musl]
+
+  '@img/sharp-libvips-win32-x64@1.0.4':
+    resolution: {integrity: sha512-QDivRiNq3K7NuZQ+DcWmEHo6eXtN6rPYPxxEbmE936Na7vAHxcj4gYNO5dutqb4yJhAe5t3I7CDa3wIh86A94w==}
 
   '@img/sharp-linux-arm64@0.33.5':
     resolution: {integrity: sha512-JMVv+AMRyGOHtO1RFBiJy/MBsgz0x4AWrT6QoEVVTyh1E39TrCUpTRI7mx9VksGX4awWASxqCYLCV4wBZHAYxA==}
@@ -2422,6 +2431,8 @@ snapshots:
   '@img/sharp-libvips-linuxmusl-x64@1.0.4':
     optional: true
 
+  '@img/sharp-libvips-win32-x64@1.0.4': {}
+
   '@img/sharp-linux-arm64@0.33.5':
     optionalDependencies:
       '@img/sharp-libvips-linux-arm64': 1.0.4
@@ -2460,8 +2471,7 @@ snapshots:
   '@img/sharp-win32-ia32@0.33.5':
     optional: true
 
-  '@img/sharp-win32-x64@0.33.5':
-    optional: true
+  '@img/sharp-win32-x64@0.33.5': {}
 
   '@isaacs/cliui@8.0.2':
     dependencies:

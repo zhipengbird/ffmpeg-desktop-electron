@@ -73,8 +73,16 @@ async function withOutput(
     if (ctx.signal.aborted) {
       throw cancelledError()
     }
-    const res = typeof r === 'string' ? { output: r } : r
-    return { ok: true, output: res.output, inputSize, outputSize: safeSize(res.output), notice: res.notice, encoder: res.encoder }
+    const res = typeof r === 'string' ? { output: r } : (r || { output: decision.path })
+    const finalOut = res?.output || decision.path
+    return {
+      ok: true,
+      output: finalOut,
+      inputSize,
+      outputSize: safeSize(finalOut),
+      notice: res?.notice,
+      encoder: res?.encoder
+    }
   } finally {
     env.reservations.release(decision.path)
   }
