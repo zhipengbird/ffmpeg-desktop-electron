@@ -2,6 +2,8 @@
 
 基于 Electron + FFmpeg 的桌面端音视频处理工具，界面为简体中文（深色主题）。内置 FFmpeg / FFprobe（ffmpeg-static / ffprobe-static）与 sharp 图片引擎，用户无需单独安装系统依赖。
 
+> 📌 **版本路线图与未来规划**：完整的分阶段演进方案请参阅 [ROADMAP.md](file:///Users/yuanpinghua/Desktop/%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE/ffmpeg-desktop-electron/ROADMAP.md)。
+
 ## 功能一览
 
 | 功能 | 说明 |
