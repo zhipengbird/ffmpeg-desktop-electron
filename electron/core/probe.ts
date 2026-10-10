@@ -41,21 +41,29 @@ export function probeMedia(filePath: string): Promise<MediaInfo> {
           const sd = streams.map((s) => parseFloat(String(s.duration))).filter((n) => Number.isFinite(n) && n > 0)
           duration = sd.length ? Math.max(...sd) : 0
         }
+        const fileSize = parseInt(format.size, 10) || safeSize(filePath)
+        const rawBitrate = parseInt(format.bit_rate, 10) || 0
+        const calcBitrate = duration > 0 && fileSize > 0 ? Math.round((fileSize * 8) / duration) : 0
+        const effectiveBitrate = rawBitrate > 0 ? rawBitrate : calcBitrate
+
+const DEFAULT_VIDEO_BITRATE_SHARE = 0.85
+
         const info: MediaInfo = {
           format: (format.format_name || '').split(',')[0] || 'unknown',
           duration,
-          size: parseInt(format.size, 10) || safeSize(filePath),
-          bitrate: parseInt(format.bit_rate, 10) || 0
+          size: fileSize,
+          bitrate: effectiveBitrate
         }
         if (v) {
           const [n, d] = String(v.avg_frame_rate && v.avg_frame_rate !== '0/0' ? v.avg_frame_rate : v.r_frame_rate || '0/1').split('/').map(Number)
           const fps = d ? n / d : 0
+          const rawVBitrate = parseInt(v.bit_rate, 10) || 0
           info.video = {
             codec: v.codec_name || '',
             width: v.width || 0,
             height: v.height || 0,
             fps: Math.round(fps * 100) / 100,
-            bitrate: parseInt(v.bit_rate, 10) || 0
+            bitrate: rawVBitrate > 0 ? rawVBitrate : (effectiveBitrate > 0 ? Math.round(effectiveBitrate * DEFAULT_VIDEO_BITRATE_SHARE) : 0)
           }
         }
         if (a) {

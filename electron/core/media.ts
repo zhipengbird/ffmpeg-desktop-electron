@@ -48,6 +48,15 @@ export const VIDEO_PRESETS: Record<QualityPreset, { crf: number; preset: string;
 
 export const AUDIO_PRESETS: Record<QualityPreset, string> = { high: '256k', balanced: '128k', small: '64k' }
 
+const STANDARD_AUDIO_BITRATES = [32, 48, 64, 96, 128, 160, 192, 256, 320] as const
+
+function snapAudioBitrate(kbps: number): number {
+  for (let i = STANDARD_AUDIO_BITRATES.length - 1; i >= 0; i--) {
+    if (kbps >= STANDARD_AUDIO_BITRATES[i]) return STANDARD_AUDIO_BITRATES[i]
+  }
+  return 32
+}
+
 export async function safeProbe(input: string): Promise<MediaInfo | null> {
   try { return await probeMedia(input) } catch { return null }
 }
@@ -121,7 +130,12 @@ async function runWithFallback(
   const sw = softwareSpec(swCrf, swPreset)
   if (hwEncoder) {
     const v = o.info?.video
-    const kbps = targetBitrateKbps(quality, { width: v?.width, height: v?.height, fps: v?.fps, srcBitrate: v?.bitrate || o.info?.bitrate })
+    const rawBitrate = v?.bitrate || o.info?.bitrate || 0
+    const calcBitrate = (duration > 0 && o.info?.size && o.info.size > 0)
+      ? Math.round((o.info.size * 8) / duration)
+      : 0
+    const srcBitrate = rawBitrate > 0 ? rawBitrate : calcBitrate
+    const kbps = targetBitrateKbps(quality, { width: v?.width, height: v?.height, fps: v?.fps, srcBitrate })
     const hw = hwEncoderSpec(hwEncoder, kbps)
     try {
       await runFfmpeg({ jobId: o.jobId, args: [...build(hw), tmp], duration, onProgress: o.onProgress })
@@ -172,6 +186,17 @@ export async function compressMedia(o: CompressOpts): Promise<MediaOpResult> {
     if (isTargetSize && duration > 0) {
       const targetAudioKbps = Math.floor((o.targetSizeMB! * 1024 * 1024 * 0.95 * 8) / (Math.max(1, duration) * 1000))
       bitrate = `${Math.min(320, Math.max(32, targetAudioKbps))}k`
+    } else if (!o.customAudioBitrate) {
+      // 源码率封顶约束：目标音频码率不得高于源音频自身码率（防止低码率音频反而膨胀）
+      const srcAudioKbps = (info?.audio?.bitrate && info.audio.bitrate > 0)
+        ? Math.round(info.audio.bitrate / 1000)
+        : (duration > 0 && info?.size && info.size > 0 ? Math.round((info.size * 8) / (duration * 1000)) : 0)
+      if (srcAudioKbps > 0) {
+        const targetNum = parseInt(bitrate, 10) || 128
+        if (targetNum >= srcAudioKbps) {
+          bitrate = `${snapAudioBitrate(Math.round(srcAudioKbps * 0.85))}k`
+        }
+      }
     }
     const ext = path.extname(o.output)
     const meta = metadataArgs(o.stripMetadata)

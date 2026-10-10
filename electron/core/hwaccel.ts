@@ -52,12 +52,12 @@ export interface BitrateContext {
   srcBitrate?: number
 }
 
-const BPP: Record<QualityPreset, number> = { high: 0.1, balanced: 0.065, small: 0.04 }
-const SRC_RATIO: Record<QualityPreset, number> = { high: 0.85, balanced: 0.6, small: 0.4 }
+const BPP: Record<QualityPreset, number> = { high: 0.08, balanced: 0.05, small: 0.03 }
+const SRC_RATIO: Record<QualityPreset, number> = { high: 0.8, balanced: 0.6, small: 0.4 }
 
 /**
  * 硬件编码器不支持 CRF，按分辨率×帧率×bpp 估算目标码率（kbps），
- * 并以源码率的一定比例封顶，确保“压缩”不会变大。
+ * 并以源码率的一定比例严格封顶，确保“压缩”绝不会变大。
  */
 export function targetBitrateKbps(quality: QualityPreset | { crf: number }, ctx: BitrateContext): number {
   const w = ctx.width && ctx.width > 0 ? ctx.width : 1280
@@ -71,15 +71,20 @@ export function targetBitrateKbps(quality: QualityPreset | { crf: number }, ctx:
   } else {
     const f = Math.pow(2, (23 - quality.crf) / 6)
     bpp = BPP.balanced * f
-    ratio = Math.min(1, Math.max(0.15, SRC_RATIO.balanced * f))
+    ratio = Math.min(0.85, Math.max(0.15, SRC_RATIO.balanced * f))
   }
   let kbps = (w * h * fps * bpp) / 1000
-  if (ctx.srcBitrate && ctx.srcBitrate > 0) kbps = Math.min(kbps, (ctx.srcBitrate / 1000) * ratio)
-  return Math.max(200, Math.round(kbps))
+  if (ctx.srcBitrate && ctx.srcBitrate > 0) {
+    const srcKbps = ctx.srcBitrate / 1000
+    // 无论计算值多大，目标码率不得超过源码率的 ratio 比例；且封顶不超过源码率的 85%
+    const capped = Math.min(srcKbps * ratio, srcKbps * 0.85)
+    kbps = Math.min(kbps, capped)
+  }
+  return Math.max(120, Math.round(kbps))
 }
 
 export function hwEncoderSpec(name: string, kbps: number): VideoEncoderSpec {
-  const rate = ['-b:v', `${kbps}k`, '-maxrate', `${Math.round(kbps * 1.5)}k`, '-bufsize', `${kbps * 2}k`]
+  const rate = ['-b:v', `${kbps}k`, '-maxrate', `${Math.round(kbps * 1.3)}k`, '-bufsize', `${kbps * 2}k`]
   if (name.endsWith('_videotoolbox')) {
     // VideoToolbox 在部分机型上不支持 DataRateLimits（maxrate），只设平均码率最稳妥；注入 -hwaccel 全链路加速
     return {
