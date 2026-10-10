@@ -63,6 +63,8 @@ export interface Settings {
   hwAccel: boolean
   /** 'auto' 或具体硬件编码器名 */
   hwEncoder: string
+  /** 隐私脱敏：是否擦除 GPS 坐标、相机设备、录制时间等元数据 */
+  stripMetadata: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -75,7 +77,8 @@ export const DEFAULT_SETTINGS: Settings = {
   concurrency: 2,
   imageConcurrency: 4,
   hwAccel: false,
-  hwEncoder: 'auto'
+  hwEncoder: 'auto',
+  stripMetadata: false
 }
 
 export interface EncoderTest {

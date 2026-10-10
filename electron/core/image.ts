@@ -30,6 +30,7 @@ export interface ImageCompressOptions {
   preset: QualityPreset
   customQuality?: number
   format: ImageFormat
+  stripMetadata?: boolean
 }
 
 async function loadSharp() {
@@ -37,13 +38,17 @@ async function loadSharp() {
 }
 
 export async function compressImage(opts: ImageCompressOptions): Promise<string> {
-  const { input, output, preset, customQuality, format } = opts
+  const { input, output, preset, customQuality, format, stripMetadata } = opts
   if (!fs.existsSync(input)) throw new JobFailedError(mapError(`${input}: No such file or directory`))
   const sharp = await loadSharp()
   const quality = Math.min(100, Math.max(1, Math.round(customQuality ?? QUALITY[preset])))
   try {
     await withTempOutput(output, async (tmp) => {
       let pipeline = sharp(input, { failOn: 'error' }).rotate()
+      if (stripMetadata === false) {
+        // 用户未开启脱敏时保留原有 exif/icc 标签
+        pipeline = pipeline.withMetadata()
+      }
       if (format === 'png') {
         // 高质量：无损最大压缩；其余：调色板量化（体积显著减小）
         const lossless = customQuality === undefined ? preset === 'high' : quality >= 100

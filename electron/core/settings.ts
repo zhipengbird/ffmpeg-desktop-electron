@@ -25,7 +25,8 @@ export function sanitizeSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS
     concurrency: clampInt(pick('concurrency'), 1, 8, base.concurrency),
     imageConcurrency: clampInt(pick('imageConcurrency'), 1, 16, base.imageConcurrency),
     hwAccel: bool('hwAccel'),
-    hwEncoder: typeof pick('hwEncoder') === 'string' && pick('hwEncoder') ? (pick('hwEncoder') as string) : 'auto'
+    hwEncoder: typeof pick('hwEncoder') === 'string' && pick('hwEncoder') ? (pick('hwEncoder') as string) : 'auto',
+    stripMetadata: bool('stripMetadata')
   }
 }
 

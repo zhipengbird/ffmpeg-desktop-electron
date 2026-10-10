@@ -101,6 +101,9 @@ const corrupt = path.join(work, 'corrupt.mp4')
 fs.writeFileSync(corrupt, Buffer.concat([Buffer.from('this is not a real video file'), Buffer.alloc(4096, 0x5a)]))
 const corruptJpg = path.join(work, 'corrupt.jpg')
 fs.writeFileSync(corruptJpg, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2000, 0x11)]))
+// 含敏感元数据的文件
+const metaVideo = path.join(work, 'meta.mp4')
+ff(['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=10:duration=1', '-metadata', 'title=MySecretLocation', '-metadata', 'artist=SecretArtist', '-c:v', 'libx264', '-preset', 'ultrafast', metaVideo])
 console.log('素材就绪。\n')
 
 // =====================================================
@@ -561,6 +564,47 @@ await test('Range 请求解析', async () => {
   const p = '/Users/张三/视频 #1?.mp4'
   assert(core.mediaUrlToPath(core.pathToMediaUrl(p)) === p, '路径往返')
   assert(core.mimeFor('.MP4') === 'video/mp4')
+})
+
+// =====================================================
+console.log('\n【12】元数据脱敏 / 视频拼接 / 画质对比帧')
+await test('元数据脱敏：擦除 EXIF/GPS/标题敏感信息 (-map_metadata -1)', async () => {
+  const out = path.join(work, 'stripped.mp4')
+  await core.compressMedia({ jobId: nextJob(), input: metaVideo, output: out, preset: 'small', stripMetadata: true })
+  const p = probe(out)
+  const tags = p.j.format.tags || {}
+  assert(!tags.title && !tags.artist, '敏感标签未清除: ' + JSON.stringify(tags))
+  return 'title/artist 标签已完全剔除'
+})
+
+await test('多视频极速无损合并 (concatMedia copy 模式)', async () => {
+  const seg1 = copyTo(sampleMp4, 'seg1.mp4')
+  const seg2 = copyTo(sampleMp4, 'seg2.mp4')
+  const out = path.join(work, 'merged_copy.mp4')
+  const r = await core.concatMedia({ jobId: nextJob(), inputs: [seg1, seg2], output: out, mode: 'copy' })
+  assert(r.encoder === 'copy', '应为 copy 模式')
+  const p = probe(out)
+  approx(p.duration, 6, 0.5, '合并后时长')
+  return `时长约 ${p.duration.toFixed(2)}s, 编码=${r.encoder}`
+})
+
+await test('多视频智能重编码合并 (concatMedia transcode 模式)', async () => {
+  const seg1 = copyTo(sampleMp4, 'seg_trans1.mp4')
+  const seg2 = copyTo(sampleMp4, 'seg_trans2.mp4')
+  const out = path.join(work, 'merged_transcode.mp4')
+  const r = await core.concatMedia({ jobId: nextJob(), inputs: [seg1, seg2], output: out, mode: 'transcode' })
+  assert(fs.existsSync(out) && fs.statSync(out).size > 1000, '输出文件无效')
+  const p = probe(out)
+  approx(p.duration, 6, 0.5, '合并后时长')
+  return `重编码完成，时长约 ${p.duration.toFixed(2)}s`
+})
+
+await test('画质前后对比关键帧提取 (extractFrame)', async () => {
+  const frame = await core.extractFrame(sampleMp4, 1)
+  assert(fs.existsSync(frame), '截取的关键帧图片不存在')
+  const meta = await sharp(frame).metadata()
+  assert(meta.width > 0 && meta.height > 0, '图像尺寸无效')
+  return `成功截取代表帧：${meta.width}x${meta.height}`
 })
 
 // =====================================================

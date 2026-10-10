@@ -7,8 +7,8 @@ import { ImageEngine } from './image-engine'
 import {
   TaskQueue, SettingsStore, PathReservations, detectHwEncoders, cancelJob, cancelAllJobs,
   probeMedia, mapError, JobFailedError, parseRange, mimeFor, mediaUrlToPath, pathToMediaUrl,
-  compressTask, convertTask, separateTask, imageTask, trimTask,
-  type TaskEnv, type TaskWorker, type TrimParams
+  compressTask, convertTask, separateTask, imageTask, trimTask, mergeTask, extractFrame,
+  type TaskEnv, type TaskWorker, type TrimParams, type MergeParams
 } from './core'
 import {
   summarizeItems, type EncoderInfo, type JobResult, type QueueItem, type QueueKind, type Settings
@@ -454,6 +454,60 @@ ipcMain.handle('media:trim', async (_e, opts: { jobId: string; input: string } &
     singleJobs.delete(opts.jobId)
     singleJobProgress.delete(opts.jobId)
     updateAppProgressBar()
+  }
+})
+
+ipcMain.handle('media:merge', async (_e, opts: { jobId: string; inputs: string[] } & MergeParams): Promise<JobResult> => {
+  const ctrl = new AbortController()
+  singleJobs.set(opts.jobId, ctrl)
+  singleJobProgress.set(opts.jobId, 1)
+  updateAppProgressBar()
+  try {
+    const res = await mergeTask(opts.inputs, { mode: opts.mode, normalizeAudio: opts.normalizeAudio }, {
+      jobId: opts.jobId,
+      signal: ctrl.signal,
+      onProgress: (percent, timemark) => {
+        send('job:progress', { jobId: opts.jobId, percent, timemark })
+        if (typeof percent === 'number') {
+          singleJobProgress.set(opts.jobId, Math.min(100, Math.max(0, percent)))
+          updateAppProgressBar()
+        }
+      }
+    }, env)
+    const name = path.basename(res.output)
+    if (res.skipped) notify('合并已跳过', `${name} 已存在`, res.output)
+    else {
+      notify('合并完成', `${name}  ${formatSize(res.outputSize)}${res.notice ? `（${res.notice}）` : ''}`, res.output)
+      afterFinish(res.output)
+    }
+    return res
+  } catch (err) {
+    const job = err instanceof JobFailedError ? err.job : mapError(err)
+    if (job.code !== 'CANCELLED') notify('合并失败', `${path.basename(opts.inputs[0] || '视频')}：${job.message}`)
+    return { ok: false, error: job }
+  } finally {
+    singleJobs.delete(opts.jobId)
+    singleJobProgress.delete(opts.jobId)
+    updateAppProgressBar()
+  }
+})
+
+ipcMain.handle('media:compareFrames', async (_e, opts: { original: string; processed: string; timestamp?: number }) => {
+  const ts = opts.timestamp ?? 1
+  try {
+    const [origFile, procFile] = await Promise.all([
+      extractFrame(opts.original, ts),
+      extractFrame(opts.processed, ts)
+    ])
+    allowMedia(origFile)
+    allowMedia(procFile)
+    return {
+      originalThumb: pathToMediaUrl(origFile),
+      processedThumb: pathToMediaUrl(procFile)
+    }
+  } catch (e) {
+    console.error('[media:compareFrames] 截取对比帧失败', e)
+    throw e
   }
 })
 

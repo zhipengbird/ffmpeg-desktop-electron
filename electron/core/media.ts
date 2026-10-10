@@ -1,5 +1,6 @@
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
 import type { QualityPreset } from '../../shared/types'
 import { runFfmpeg, type ProgressCallback } from './runner'
 import { probeMedia, type MediaInfo } from './probe'
@@ -20,6 +21,20 @@ interface BaseOpts {
   onProgress?: ProgressCallback
   /** 预先探测到的媒体信息（可省略） */
   info?: MediaInfo | null
+  /** 是否擦除敏感元数据 (EXIF, GPS, 录制时间, 章节等) */
+  stripMetadata?: boolean
+  /** 是否应用 EBU R128 广播级智能音量标准化 (-16 LUFS) */
+  normalizeAudio?: boolean
+}
+
+/** 隐私元数据清理参数：-map_metadata -1 -map_chapters -1 */
+export function metadataArgs(strip?: boolean): string[] {
+  return strip ? ['-map_metadata', '-1', '-map_chapters', '-1'] : []
+}
+
+/** 广播级智能音量标准化滤镜参数 (EBU R128: 靶向 -16 LUFS, 最大峰值 -1.5 dB) */
+export function loudnormArgs(normalize?: boolean): string[] {
+  return normalize ? ['-af', 'loudnorm=I=-16:TP=-1.5:LRA=11'] : []
 }
 
 /** 软件编码速度预设：质量档位不变，但避免 slow 带来的过长耗时。 */
@@ -157,9 +172,11 @@ export async function compressMedia(o: CompressOpts): Promise<MediaOpResult> {
       bitrate = `${Math.min(320, Math.max(32, targetAudioKbps))}k`
     }
     const ext = path.extname(o.output)
+    const meta = metadataArgs(o.stripMetadata)
+    const norm = loudnormArgs(o.normalizeAudio)
     await withTempOutput(o.output, (tmp) => runFfmpeg({
       jobId: o.jobId,
-      args: ['-i', o.input, '-vn', '-map_metadata', '0', ...audioCodecArgsForExt(ext, bitrate), tmp],
+      args: ['-i', o.input, '-vn', ...(meta.length ? meta : ['-map_metadata', '0']), ...norm, ...audioCodecArgsForExt(ext, bitrate), tmp],
       duration, onProgress: o.onProgress
     }))
     return { output: o.output, notice: isTargetSize ? `目标体积：${o.targetSizeMB} MB` : undefined }
@@ -185,7 +202,7 @@ export async function compressMedia(o: CompressOpts): Promise<MediaOpResult> {
       try {
         await withTempOutput(o.output, (tmp) => runFfmpeg({
           jobId: o.jobId,
-          args: [...hw.preInput, '-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(hw), '-c:a', 'aac', '-b:a', audioBr, ...containerArgs(o.output), tmp],
+          args: [...hw.preInput, '-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(hw), '-c:a', 'aac', '-b:a', audioBr, ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata), ...containerArgs(o.output), tmp],
           duration, onProgress: o.onProgress
         }))
         return { output: o.output, encoder: o.hwEncoder, notice: `目标体积：${o.targetSizeMB} MB（码率 ${videoKbps}k）` }
@@ -197,7 +214,7 @@ export async function compressMedia(o: CompressOpts): Promise<MediaOpResult> {
 
     await withTempOutput(o.output, (tmp) => runFfmpeg({
       jobId: o.jobId,
-      args: ['-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(swTargetSpec), '-c:a', 'aac', '-b:a', audioBr, ...containerArgs(o.output), tmp],
+      args: ['-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(swTargetSpec), '-c:a', 'aac', '-b:a', audioBr, ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata), ...containerArgs(o.output), tmp],
       duration, onProgress: o.onProgress
     }))
     return { output: o.output, encoder: 'libx264', notice: `目标体积：${o.targetSizeMB} MB（码率 ${videoKbps}k）` }
@@ -210,7 +227,7 @@ export async function compressMedia(o: CompressOpts): Promise<MediaOpResult> {
   const quality = o.customCrf !== undefined ? { crf: o.customCrf } : o.preset
   const r = await withTempOutput(o.output, (tmp) => runWithFallback(
     { ...o, info }, duration, o.hwEncoder ?? null, quality, crf, p.preset,
-    (spec) => [...spec.preInput, '-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(spec), '-c:a', 'aac', '-b:a', audioBr, ...containerArgs(o.output)],
+    (spec) => [...spec.preInput, '-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(spec), '-c:a', 'aac', '-b:a', audioBr, ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata), ...containerArgs(o.output)],
     tmp
   ))
   return { output: o.output, ...r }
@@ -239,7 +256,7 @@ export async function convertFormat(o: ConvertOpts): Promise<MediaOpResult> {
     const filter = `[0:v] fps=${fps},scale=${width}:-1:flags=lanczos,split [a][b]; [a] palettegen=reserve_transparent=0:stats_mode=diff [p]; [b][p] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle`
     await withTempOutput(o.output, (tmp) => runFfmpeg({
       jobId: o.jobId,
-      args: ['-i', o.input, '-vf', filter, '-an', tmp],
+      args: ['-i', o.input, '-vf', filter, '-an', ...metadataArgs(o.stripMetadata), tmp],
       duration,
       onProgress: o.onProgress
     }))
@@ -253,7 +270,7 @@ export async function convertFormat(o: ConvertOpts): Promise<MediaOpResult> {
     const filter = `fps=${fps},scale=${width}:-1:flags=lanczos`
     await withTempOutput(o.output, (tmp) => runFfmpeg({
       jobId: o.jobId,
-      args: ['-i', o.input, '-vcodec', 'libwebp', '-lossless', '0', '-compression_level', '4', '-q:v', '75', '-loop', '0', '-vf', filter, '-an', tmp],
+      args: ['-i', o.input, '-vcodec', 'libwebp', '-lossless', '0', '-compression_level', '4', '-q:v', '75', '-loop', '0', '-vf', filter, '-an', ...metadataArgs(o.stripMetadata), tmp],
       duration,
       onProgress: o.onProgress
     }))
@@ -264,7 +281,7 @@ export async function convertFormat(o: ConvertOpts): Promise<MediaOpResult> {
     if (info && !info.video) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有视频流，无法转换为视频格式（请选择音频格式）' })
     const r = await withTempOutput(o.output, (tmp) => runWithFallback(
       { ...o, info }, duration, o.hwEncoder ?? null, 'balanced', 23, 'medium',
-      (spec) => [...spec.preInput, '-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(spec), '-c:a', 'aac', '-b:a', '192k', ...(f === 'mp4' ? ['-movflags', '+faststart'] : [])],
+      (spec) => [...spec.preInput, '-i', o.input, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(spec), '-c:a', 'aac', '-b:a', '192k', ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata), ...(f === 'mp4' ? ['-movflags', '+faststart'] : [])],
       tmp
     ))
     return { output: o.output, ...r }
@@ -273,12 +290,12 @@ export async function convertFormat(o: ConvertOpts): Promise<MediaOpResult> {
   switch (f) {
     case 'webm':
       if (info && !info.video) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有视频流，无法转换为视频格式（请选择音频格式）' })
-      args = ['-i', o.input, '-map', '0:V:0', '-map', '0:a?', '-c:v', 'libvpx-vp9', '-crf', '33', '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1', '-c:a', 'libopus', '-b:a', '128k']
+      args = ['-i', o.input, '-map', '0:V:0', '-map', '0:a?', '-c:v', 'libvpx-vp9', '-crf', '33', '-b:v', '0', '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1', '-c:a', 'libopus', '-b:a', '128k', ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata)]
       break
-    case 'mp3': args = ['-i', o.input, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k']; break
-    case 'aac': args = ['-i', o.input, '-vn', '-c:a', 'aac', '-b:a', '192k']; break
-    case 'wav': args = ['-i', o.input, '-vn', '-c:a', 'pcm_s16le']; break
-    default: args = ['-i', o.input, '-c', 'copy']
+    case 'mp3': args = ['-i', o.input, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata)]; break
+    case 'aac': args = ['-i', o.input, '-vn', '-c:a', 'aac', '-b:a', '192k', ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata)]; break
+    case 'wav': args = ['-i', o.input, '-vn', '-c:a', 'pcm_s16le', ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata)]; break
+    default: args = ['-i', o.input, '-c', 'copy', ...metadataArgs(o.stripMetadata)]
   }
   await withTempOutput(o.output, (tmp) => runFfmpeg({ jobId: o.jobId, args: [...args, tmp], duration, onProgress: o.onProgress }))
   return { output: o.output, encoder: f === 'webm' ? 'libvpx-vp9' : undefined }
@@ -316,20 +333,20 @@ export async function separateStreams(o: SeparateOpts): Promise<MediaOpResult> {
     if (info && !info.audio) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有音频流，无法提取音频' })
     const ext = path.extname(o.output)
     await withTempOutput(o.output, (tmp) => runFfmpeg({
-      jobId: o.jobId, args: ['-i', o.input, '-vn', '-sn', ...audioCodecArgsForExt(ext, '192k'), tmp], duration, onProgress: o.onProgress
+      jobId: o.jobId, args: ['-i', o.input, '-vn', '-sn', ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata), ...audioCodecArgsForExt(ext, '192k'), tmp], duration, onProgress: o.onProgress
     }))
     return { output: o.output }
   }
   if (o.mode === 'audio-copy') {
     if (info && !info.audio) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有音频流，无法提取音频' })
     await withTempOutput(o.output, (tmp) => runFfmpeg({
-      jobId: o.jobId, args: ['-i', o.input, '-map', '0:a:0?', '-vn', '-sn', '-c:a', 'copy', tmp], duration, onProgress: o.onProgress
+      jobId: o.jobId, args: ['-i', o.input, '-map', '0:a:0?', '-vn', '-sn', '-c:a', 'copy', ...metadataArgs(o.stripMetadata), tmp], duration, onProgress: o.onProgress
     }))
     return { output: o.output }
   }
   if (info && !info.video) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有视频流，无法导出无声视频' })
   await withTempOutput(o.output, (tmp) => runFfmpeg({
-    jobId: o.jobId, args: ['-i', o.input, '-map', '0:V:0', '-an', '-sn', '-c:v', 'copy', ...containerArgs(o.output), tmp], duration, onProgress: o.onProgress
+    jobId: o.jobId, args: ['-i', o.input, '-map', '0:V:0', '-an', '-sn', '-c:v', 'copy', ...metadataArgs(o.stripMetadata), ...containerArgs(o.output), tmp], duration, onProgress: o.onProgress
   }))
   return { output: o.output }
 }
@@ -359,7 +376,7 @@ export async function trimMedia(o: TrimOpts): Promise<MediaOpResult> {
   if (o.mode === 'fast') {
     await withTempOutput(o.output, (tmp) => runFfmpeg({
       jobId: o.jobId,
-      args: ['-ss', ss, '-i', o.input, '-t', t, '-map', '0:v?', '-map', '0:a?', '-c', 'copy', '-avoid_negative_ts', 'make_zero', ...containerArgs(o.output), tmp],
+      args: ['-ss', ss, '-i', o.input, '-t', t, '-map', '0:v?', '-map', '0:a?', '-c', 'copy', '-avoid_negative_ts', 'make_zero', ...metadataArgs(o.stripMetadata), ...containerArgs(o.output), tmp],
       duration: dur, onProgress: o.onProgress
     }))
     return { output: o.output }
@@ -368,7 +385,7 @@ export async function trimMedia(o: TrimOpts): Promise<MediaOpResult> {
   if (isAudioOnly(info, o.input)) {
     await withTempOutput(o.output, (tmp) => runFfmpeg({
       jobId: o.jobId,
-      args: ['-ss', ss, '-i', o.input, '-t', t, '-vn', ...audioCodecArgsForExt(path.extname(o.output), '192k'), tmp],
+      args: ['-ss', ss, '-i', o.input, '-t', t, '-vn', ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata), ...audioCodecArgsForExt(path.extname(o.output), '192k'), tmp],
       duration: dur, onProgress: o.onProgress
     }))
     return { output: o.output }
@@ -376,8 +393,163 @@ export async function trimMedia(o: TrimOpts): Promise<MediaOpResult> {
   // 精准模式：-ss 放在 -i 之前并重新编码，ffmpeg 默认 accurate_seek，可做到帧级精确且比输出端 seek 快得多
   const r = await withTempOutput(o.output, (tmp) => runWithFallback(
     { ...o, info }, dur, o.hwEncoder ?? null, 'high', 18, 'medium',
-    (spec) => [...spec.preInput, '-ss', ss, '-accurate_seek', '-i', o.input, '-t', t, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(spec), '-c:a', 'aac', '-b:a', '192k', ...containerArgs(o.output)],
+    (spec) => [...spec.preInput, '-ss', ss, '-accurate_seek', '-i', o.input, '-t', t, '-map', '0:V:0', '-map', '0:a?', ...videoArgs(spec), '-c:a', 'aac', '-b:a', '192k', ...loudnormArgs(o.normalizeAudio), ...metadataArgs(o.stripMetadata), ...containerArgs(o.output)],
     tmp
   ))
   return { output: o.output, ...r }
+}
+
+export type ConcatMode = 'auto' | 'copy' | 'transcode'
+
+export interface ConcatOpts {
+  jobId: string
+  inputs: string[]
+  output: string
+  mode?: ConcatMode
+  hwEncoder?: string | null
+  stripMetadata?: boolean
+  normalizeAudio?: boolean
+  onProgress?: ProgressCallback
+}
+
+/**
+ * 多视频/多音频拼接合并。
+ * 支持：
+ * 1. 同规格极速流复制秒级无损合并 (基于 FFmpeg concat demuxer)；
+ * 2. 异规格智能重编码合流 (统一分辨率加黑边、声道采样率标准化对齐)。
+ */
+export async function concatMedia(o: ConcatOpts): Promise<MediaOpResult> {
+  if (!Array.isArray(o.inputs) || o.inputs.length < 2) {
+    throw new JobFailedError({ code: 'FORMAT', message: '视频拼接至少需要提供 2 个文件' })
+  }
+  for (const input of o.inputs) {
+    if (!fs.existsSync(input)) {
+      throw new JobFailedError({ code: 'NOT_FOUND', message: `拼接源文件不存在：${input}` })
+    }
+  }
+
+  const probes = await Promise.all(o.inputs.map(safeProbe))
+  const totalDuration = probes.reduce((acc, p) => acc + (p?.duration || 0), 0)
+
+  // 检查是否具备同规格极速流复制条件
+  const first = probes[0]
+  const allHaveVideo = probes.every(p => Boolean(p?.video))
+  const allHaveAudio = probes.every(p => Boolean(p?.audio))
+  const sameVideo = allHaveVideo && probes.every(p =>
+    p?.video?.codec === first?.video?.codec &&
+    p?.video?.width === first?.video?.width &&
+    p?.video?.height === first?.video?.height
+  )
+  const sameAudio = (allHaveAudio && probes.every(p => p?.audio?.codec === first?.audio?.codec)) || probes.every(p => !p?.audio)
+
+  const mode = o.mode || 'auto'
+  const canCopy = mode === 'copy' || (mode === 'auto' && sameVideo && sameAudio)
+
+  if (canCopy) {
+    // 极速流复制拼接 (Concat Demuxer)
+    const tmpDir = path.dirname(o.output)
+    const listFile = path.join(tmpDir, `.concat_${o.jobId}_${Date.now()}.txt`)
+    const listContent = o.inputs.map(p => `file '${path.resolve(p).replace(/'/g, "'\\''")}'`).join('\n')
+    fs.writeFileSync(listFile, listContent, 'utf8')
+    try {
+      await withTempOutput(o.output, (tmp) => runFfmpeg({
+        jobId: o.jobId,
+        args: [
+          '-f', 'concat',
+          '-safe', '0',
+          '-i', listFile,
+          '-c', 'copy',
+          ...metadataArgs(o.stripMetadata),
+          ...containerArgs(o.output),
+          tmp
+        ],
+        duration: totalDuration,
+        onProgress: o.onProgress
+      }))
+      return { output: o.output, encoder: 'copy', notice: '极速流复制无损合并完成' }
+    } finally {
+      try { fs.rmSync(listFile, { force: true }) } catch { /* ignore */ }
+    }
+  }
+
+  // 智能重编码合流 (Concat Filter)
+  // 以第一个有效视频的宽高为标准，若无则默认 1920x1080
+  const targetW = first?.video?.width || 1920
+  const targetH = first?.video?.height || 1080
+  const n = o.inputs.length
+
+  const inputArgs: string[] = []
+  const filterChains: string[] = []
+  const concatInputs: string[] = []
+
+  for (let i = 0; i < n; i++) {
+    inputArgs.push('-i', o.inputs[i])
+    // 画面统一等比缩放并居中加黑边至 targetW x targetH，强制统一帧率 30fps
+    filterChains.push(
+      `[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v${i}]`
+    )
+    if (probes[i]?.audio) {
+      // 统一音频格式为 44100Hz 双声道
+      filterChains.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`)
+    } else {
+      // 若原视频无声，补全静音音轨
+      const dur = probes[i]?.duration || 5
+      filterChains.push(`aevalsrc=0:d=${dur.toFixed(2)}:s=44100:c=stereo[a${i}]`)
+    }
+    concatInputs.push(`[v${i}][a${i}]`)
+  }
+
+  const concatFilter = `${filterChains.join('; ')}; ${concatInputs.join('')}concat=n=${n}:v=1:a=1[outv][outa]`
+
+  // 音频处理
+  const normArgs = loudnormArgs(o.normalizeAudio)
+  const audioFilter = normArgs.length > 0 ? ['-filter:a', 'loudnorm=I=-16:TP=-1.5:LRA=11'] : []
+
+  // 视频编码器：优先使用硬件加速，否则 libx264
+  let videoCodecArgs = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p']
+  let usedEncoder = 'libx264'
+  if (o.hwEncoder) {
+    const hw = hwEncoderSpec(o.hwEncoder, 3500)
+    videoCodecArgs = hw.args
+    usedEncoder = o.hwEncoder
+  }
+
+  await withTempOutput(o.output, (tmp) => runFfmpeg({
+    jobId: o.jobId,
+    args: [
+      ...inputArgs,
+      '-filter_complex', concatFilter,
+      '-map', '[outv]',
+      '-map', '[outa]',
+      ...videoCodecArgs,
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      ...audioFilter,
+      ...metadataArgs(o.stripMetadata),
+      ...containerArgs(o.output),
+      tmp
+    ],
+    duration: totalDuration,
+    onProgress: o.onProgress
+  }))
+
+  return { output: o.output, encoder: usedEncoder, notice: `智能重编码合流完成 (${n} 个片段拼接)` }
+}
+
+/**
+ * 提取文件（视频抽取第 1 秒画面，图片直接返回）的图像路径，用于画质对比。
+ */
+export async function extractFrame(filePath: string, timestampSec = 1): Promise<string> {
+  const ext = path.extname(filePath).toLowerCase()
+  if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'].includes(ext)) {
+    return filePath
+  }
+  const tmpDir = os.tmpdir()
+  const outPath = path.join(tmpDir, `compare_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`)
+  await runFfmpeg({
+    jobId: `frame_${Date.now()}`,
+    args: ['-ss', Math.max(0, timestampSec).toFixed(3), '-i', filePath, '-frames:v', '1', '-q:v', '2', outPath],
+    duration: 0
+  })
+  return outPath
 }

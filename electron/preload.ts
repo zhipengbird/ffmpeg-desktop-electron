@@ -28,8 +28,12 @@ const api = {
   imageInfo: (p: string) => ipcRenderer.invoke('image:info', p) as Promise<Record<string, unknown>>,
   allowMedia: (p: string) => ipcRenderer.invoke('media:allow', p) as Promise<string | null>,
   cancelJob: (jobId: string) => ipcRenderer.invoke('job:cancel', jobId) as Promise<boolean>,
-  trim: (opts: { jobId: string; input: string; start: number; end: number; mode: 'fast' | 'precise' }) =>
+  trim: (opts: { jobId: string; input: string; start: number; end: number; mode: 'fast' | 'precise'; normalizeAudio?: boolean }) =>
     ipcRenderer.invoke('media:trim', opts) as Promise<JobResult>,
+  merge: (opts: { jobId: string; inputs: string[]; mode?: 'auto' | 'copy' | 'transcode'; normalizeAudio?: boolean }) =>
+    ipcRenderer.invoke('media:merge', opts) as Promise<JobResult>,
+  compareFrames: (opts: { original: string; processed: string; timestamp?: number }) =>
+    ipcRenderer.invoke('media:compareFrames', opts) as Promise<{ originalThumb: string; processedThumb: string }>,
   onProgress: (cb: (e: ProgressEvent) => void) => listen<ProgressEvent>('job:progress', cb),
 
   queue: {

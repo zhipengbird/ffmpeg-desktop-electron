@@ -83,6 +83,16 @@ export default function SettingsPanel() {
       </div>
 
       <div className="panel">
+        <div className="panel-title">隐私与脱敏</div>
+        <Row
+          title="擦除敏感元数据 (Metadata Stripper)"
+          desc="自动移除输出视频、音频与照片中的 GPS 地理坐标、拍摄设备型号、录制时间与私人注释，防止隐私泄露。"
+        >
+          <Toggle checked={settings.stripMetadata} onChange={(v) => update({ stripMetadata: v })} />
+        </Row>
+      </div>
+
+      <div className="panel">
         <div className="panel-title">性能</div>
         <Row title="音视频并发数" desc="同时处理的音视频任务数（压缩 / 分离 / 转换），默认 2">
           <select className="select" value={settings.concurrency} onChange={(e) => update({ concurrency: Number(e.target.value) })}>

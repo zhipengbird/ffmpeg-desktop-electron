@@ -6,8 +6,11 @@ interface Props {
   inputSize: number
   outputSize: number
   notice?: string
+  encoder?: string
   skipped?: boolean
   compact?: boolean
+  onDismiss?: () => void
+  onCompare?: () => void
 }
 
 export function SizeChange({ inputSize, outputSize }: { inputSize: number; outputSize: number }) {
@@ -23,17 +26,22 @@ export function SizeChange({ inputSize, outputSize }: { inputSize: number; outpu
   )
 }
 
-export function OutputButtons({ output, small }: { output: string; small?: boolean }) {
+export function OutputButtons({ output, small, onCompare }: { output: string; small?: boolean; onCompare?: () => void }) {
   const cls = small ? 'btn btn-ghost btn-xs' : 'btn btn-ghost btn-sm'
   return (
     <div className="output-buttons">
+      {onCompare && (
+        <button className={cls} onClick={onCompare} title="对比处理前后画质细节">
+          🔍 对比画质
+        </button>
+      )}
       <button className={cls} onClick={() => window.api.openFile(output)} title="用系统默认程序打开">打开文件</button>
       <button className={cls} onClick={() => window.api.showItem(output)}>{showInFolderLabel(window.api.platform)}</button>
     </div>
   )
 }
 
-export default function ResultCard({ output, inputSize, outputSize, notice, skipped, compact }: Props) {
+export default function ResultCard({ output, inputSize, outputSize, notice, skipped, compact, onCompare }: Props) {
   const onDragStart = (e: React.DragEvent) => {
     e.preventDefault()
     if (output) window.api.startDrag(output)
@@ -56,7 +64,7 @@ export default function ResultCard({ output, inputSize, outputSize, notice, skip
           <div className="result-file" title={output}>{basename(output)}</div>
           {!skipped && <div className="result-sizes"><SizeChange inputSize={inputSize} outputSize={outputSize} /></div>}
         </div>
-        <OutputButtons output={output} />
+        <OutputButtons output={output} onCompare={onCompare} />
       </div>
       {notice && <div className="result-notice">ℹ {notice}</div>}
     </div>

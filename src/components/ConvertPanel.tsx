@@ -20,6 +20,7 @@ export default function ConvertPanel({ onOpenSettings }: { onOpenSettings: () =>
   const [format, setFormat] = useState('mp4')
   const [gifFps, setGifFps] = useState(15)
   const [gifWidth, setGifWidth] = useState(480)
+  const [normalizeAudio, setNormalizeAudio] = useState(false)
   const queue = useQueue('convert')
   const pendingInputs = queue.snap.items.filter((i) => i.status === 'pending').map((i) => i.input)
   const hasAudioInput = pendingInputs.some(isAudio)
@@ -36,7 +37,8 @@ export default function ConvertPanel({ onOpenSettings }: { onOpenSettings: () =>
     queue.start({
       format,
       gifFps: isAnim ? gifFps : undefined,
-      gifWidth: isAnim ? gifWidth : undefined
+      gifWidth: isAnim ? gifWidth : undefined,
+      normalizeAudio: !isAnim ? normalizeAudio : undefined
     })
   }
 
@@ -88,6 +90,26 @@ export default function ConvertPanel({ onOpenSettings }: { onOpenSettings: () =>
                   <option key={opt.val} value={opt.val}>{opt.label}</option>
                 ))}
               </select>
+            </div>
+          </div>
+        )}
+
+        {!isAnim && (
+          <div className="setting-row mt-sm">
+            <div className="setting-text">
+              <div className="setting-title">广播级音量标准化 (EBU R128)</div>
+              <div className="setting-desc">将整体响度均衡至 -16 LUFS，消除爆音或微弱人声</div>
+            </div>
+            <div className="setting-control">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={normalizeAudio}
+                className={`toggle ${normalizeAudio ? 'on' : ''}`}
+                onClick={() => setNormalizeAudio(!normalizeAudio)}
+              >
+                <span className="knob" />
+              </button>
             </div>
           </div>
         )}
