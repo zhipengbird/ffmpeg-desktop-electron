@@ -537,7 +537,8 @@ export async function concatMedia(o: ConcatOpts): Promise<MediaOpResult> {
 }
 
 /**
- * 提取文件（视频抽取第 1 秒画面，图片直接返回）的图像路径，用于画质对比。
+ * 提取文件（视频抽取代表帧画面，静态图片直接返回原路径）的图像路径，用于画质对比。
+ * 具备自动容错回退机制：当指定时间戳超出媒体时长（如极短视频）时，自动回退到第 0 秒或首帧提取。
  */
 export async function extractFrame(filePath: string, timestampSec = 1): Promise<string> {
   const ext = path.extname(filePath).toLowerCase()
@@ -546,10 +547,44 @@ export async function extractFrame(filePath: string, timestampSec = 1): Promise<
   }
   const tmpDir = os.tmpdir()
   const outPath = path.join(tmpDir, `compare_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`)
-  await runFfmpeg({
-    jobId: `frame_${Date.now()}`,
-    args: ['-ss', Math.max(0, timestampSec).toFixed(3), '-i', filePath, '-frames:v', '1', '-q:v', '2', outPath],
-    duration: 0
-  })
+
+  // 1. 尝试在指定时间戳截取一帧
+  const ts = Math.max(0, timestampSec).toFixed(3)
+  try {
+    await runFfmpeg({
+      jobId: `frame_${Date.now()}`,
+      args: ['-ss', ts, '-i', filePath, '-frames:v', '1', '-q:v', '2', '-y', outPath],
+      duration: 0
+    })
+  } catch {
+    // 忽略异常，尝试后续回退
+  }
+
+  // 2. 若超出时长未生成或文件为空，回退到第 0 秒
+  if (!fs.existsSync(outPath) || fs.statSync(outPath).size === 0) {
+    try {
+      await runFfmpeg({
+        jobId: `frame_fb0_${Date.now()}`,
+        args: ['-ss', '0.000', '-i', filePath, '-frames:v', '1', '-q:v', '2', '-y', outPath],
+        duration: 0
+      })
+    } catch {
+      // 忽略异常，尝试后续回退
+    }
+  }
+
+  // 3. 若依然未生成，尝试直接提取首帧（不带 -ss 参数）
+  if (!fs.existsSync(outPath) || fs.statSync(outPath).size === 0) {
+    await runFfmpeg({
+      jobId: `frame_fb_first_${Date.now()}`,
+      args: ['-i', filePath, '-frames:v', '1', '-q:v', '2', '-y', outPath],
+      duration: 0
+    })
+  }
+
+  if (!fs.existsSync(outPath) || fs.statSync(outPath).size === 0) {
+    throw new Error(`无法从媒体文件提取对比帧：${path.basename(filePath)}`)
+  }
+
   return outPath
 }

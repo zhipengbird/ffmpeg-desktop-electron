@@ -42,9 +42,18 @@ export const PREVIEWABLE_EXTS = Object.keys(MIME)
 export function mediaUrlToPath(url: string): string | null {
   try {
     const u = new URL(url)
-    const raw = u.pathname.replace(/^\/+/, '')
-    if (!raw) return null
-    return decodeURIComponent(raw)
+    let decoded = decodeURIComponent(u.pathname)
+    decoded = decoded.replace(/^\/+/, '/')
+    if (process.platform === 'win32') {
+      if (/^\/[a-zA-Z]:/.test(decoded)) {
+        decoded = decoded.slice(1)
+      }
+    } else {
+      if (!decoded.startsWith('/')) {
+        decoded = '/' + decoded
+      }
+    }
+    return decoded || null
   } catch {
     return null
   }

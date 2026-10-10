@@ -21,9 +21,9 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
   ? path.join(__dirname, '../public')
   : process.env.DIST
 
-// 必须在 app ready 之前注册：media:// 用于本地音视频预览（支持 Range / 拖动进度）
+// 必须在 app ready 之前注册：media:// 用于本地音视频预览（支持 Range / 拖动进度 / CORS）
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+  { scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true, bypassCSP: true } }
 ])
 
 let mainWindow: BrowserWindow | null = null
@@ -36,7 +36,11 @@ const MAX_ALLOWED_MEDIA = 100
 const allowedMedia = new Set<string>()
 
 function normPath(p: string): string {
-  const r = path.resolve(p)
+  let target = p
+  try {
+    if (fs.existsSync(p)) target = fs.realpathSync(p)
+  } catch { /* ignore */ }
+  const r = path.resolve(target)
   return process.platform === 'win32' || process.platform === 'darwin' ? r.toLowerCase() : r
 }
 
@@ -273,7 +277,9 @@ function registerMediaProtocol(): void {
       'Content-Type': type,
       'Accept-Ranges': 'bytes',
       'Content-Length': String(end - start + 1),
-      'Cache-Control': 'no-store'
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS'
     }
     if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`
     return new Response(stream, { status: range ? 206 : 200, headers })
@@ -492,6 +498,16 @@ ipcMain.handle('media:merge', async (_e, opts: { jobId: string; inputs: string[]
   }
 })
 
+async function frameToDataUrl(filePath: string, isTemp: boolean): Promise<string> {
+  const ext = path.extname(filePath).toLowerCase()
+  const mime = mimeFor(ext) || 'image/jpeg'
+  const buf = await fs.promises.readFile(filePath)
+  if (isTemp) {
+    fs.promises.unlink(filePath).catch(() => {})
+  }
+  return `data:${mime};base64,${buf.toString('base64')}`
+}
+
 ipcMain.handle('media:compareFrames', async (_e, opts: { original: string; processed: string; timestamp?: number }) => {
   const ts = opts.timestamp ?? 1
   try {
@@ -499,11 +515,15 @@ ipcMain.handle('media:compareFrames', async (_e, opts: { original: string; proce
       extractFrame(opts.original, ts),
       extractFrame(opts.processed, ts)
     ])
-    allowMedia(origFile)
-    allowMedia(procFile)
+    const isOrigTemp = origFile !== opts.original
+    const isProcTemp = procFile !== opts.processed
+    const [originalThumb, processedThumb] = await Promise.all([
+      frameToDataUrl(origFile, isOrigTemp),
+      frameToDataUrl(procFile, isProcTemp)
+    ])
     return {
-      originalThumb: pathToMediaUrl(origFile),
-      processedThumb: pathToMediaUrl(procFile)
+      originalThumb,
+      processedThumb
     }
   } catch (e) {
     console.error('[media:compareFrames] 截取对比帧失败', e)

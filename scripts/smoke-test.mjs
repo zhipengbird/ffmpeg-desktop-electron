@@ -618,6 +618,25 @@ await test('画质前后对比关键帧提取 (extractFrame)', async () => {
   return `成功截取代表帧：${meta.width}x${meta.height}`
 })
 
+await test('画质对比帧容错回退：超出时长时间戳自动回退首帧 (extractFrame fallback)', async () => {
+  // sampleMp4 时长为 3s，传入 100s 超出 EOF
+  const frame = await core.extractFrame(sampleMp4, 100)
+  assert(fs.existsSync(frame) && fs.statSync(frame).size > 0, '超出时长时未能安全回退并输出帧')
+  const meta = await sharp(frame).metadata()
+  assert(meta.width > 0 && meta.height > 0, '回退帧尺寸有效')
+  return `时间戳超出时长时安全回退至首帧：${meta.width}x${meta.height}`
+})
+
+await test('mediaUrlToPath 能够正确处理无论是否被 Chromium 规范化解码的 URL', async () => {
+  // 模拟未经 Chromium 规范化的编码路径
+  const rawUrl = 'media://local/%2Fvar%2Ffolders%2Ftest.jpg'
+  assert(core.mediaUrlToPath(rawUrl) === '/var/folders/test.jpg', '未解码 URL 应正确还原')
+  // 模拟被 Chromium 规范化解码后的路径（无 %2F）
+  const normUrl = 'media://local/var/folders/test.jpg'
+  assert(core.mediaUrlToPath(normUrl) === '/var/folders/test.jpg', 'POSIX 解码后应保留前导根斜杠')
+  return 'mediaUrlToPath POSIX 路径与 Chromium 规范化双向兼容'
+})
+
 // =====================================================
 const failed = results.filter((r) => !r.ok)
 console.log(`\n结果：${results.length - failed.length}/${results.length} 通过${failed.length ? `，失败：\n - ${failed.map((f) => `${f.name}: ${f.note}`).join('\n - ')}` : ''}`)

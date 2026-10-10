@@ -19,28 +19,24 @@ export default function CompareModal({ original, processed, onClose }: Props) {
 
   const containerRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    let alive = true
+  const loadFrames = () => {
     setLoading(true)
     setError(null)
-
     window.api.compareFrames({ original, processed, timestamp: 1 })
       .then((res) => {
-        if (!alive) return
         setOrigThumb(res.originalThumb)
         setProcThumb(res.processedThumb)
         setLoading(false)
       })
       .catch((err) => {
-        if (!alive) return
         console.error('加载对比帧失败:', err)
-        setError('无法抽取该文件的画质对比画面')
+        setError('无法抽取该文件的画质对比画面，请检查文件是否完整')
         setLoading(false)
       })
+  }
 
-    return () => {
-      alive = false
-    }
+  useEffect(() => {
+    loadFrames()
   }, [original, processed])
 
   // 支持键盘 Esc 关闭
@@ -124,6 +120,9 @@ export default function CompareModal({ original, processed, onClose }: Props) {
             <div className="compare-error-state">
               <span className="error-icon">⚠️</span>
               <span>{error}</span>
+              <button className="btn btn-primary btn-sm" onClick={loadFrames}>
+                重试提取
+              </button>
             </div>
           )}
 
@@ -139,7 +138,12 @@ export default function CompareModal({ original, processed, onClose }: Props) {
               {/* 底层：处理后图像 */}
               {(viewMode === 'split' || viewMode === 'processed') && (
                 <div className="compare-layer compare-layer-processed">
-                  <img src={procThumb} alt="处理后" draggable={false} />
+                  <img
+                    src={procThumb}
+                    alt="处理后"
+                    draggable={false}
+                    onError={() => setError('处理后对比画面渲染失败，请检查文件是否损坏')}
+                  />
                   <div className="compare-badge compare-badge-right">处理后 / 压缩后</div>
                 </div>
               )}
@@ -152,7 +156,12 @@ export default function CompareModal({ original, processed, onClose }: Props) {
                     clipPath: viewMode === 'split' ? `inset(0 ${100 - sliderPos}% 0 0)` : 'none'
                   }}
                 >
-                  <img src={origThumb} alt="原画" draggable={false} />
+                  <img
+                    src={origThumb}
+                    alt="原画"
+                    draggable={false}
+                    onError={() => setError('源文件对比画面渲染失败，请检查文件是否损坏')}
+                  />
                   <div className="compare-badge compare-badge-left">源文件原画</div>
                 </div>
               )}
