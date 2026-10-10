@@ -954,7 +954,8 @@ input.invalid, .form-group input.invalid { border-color: var(--danger) !importan
   pointer-events: none;
 }
 
-.compare-layer img {
+.compare-layer img,
+.compare-layer video {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -1024,6 +1025,145 @@ input.invalid, .form-group input.invalid { border-color: var(--danger) !importan
   width: 1px;
   height: 14px;
   background: rgba(0, 0, 0, 0.3);
+}
+
+/* 对比方式模式切换（单帧精细对比 / 动态同步播放） */
+.compare-mode-switch {
+  display: inline-flex;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.compare-mode-btn {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compare-mode-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.compare-mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 500;
+}
+
+/* 时间轴控制条（静态选点 / 动态播放共用面板） */
+.compare-control-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.compare-timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.compare-time-display {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.compare-seek-slider {
+  flex: 1;
+  cursor: pointer;
+  accent-color: var(--accent);
+  height: 6px;
+}
+
+.compare-preset-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.compare-chip-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.compare-chip-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.compare-chip-btn.active {
+  background: rgba(88, 166, 255, 0.15);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+  font-weight: 600;
+}
+
+/* 动态同步播放器控制条 */
+.compare-player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compare-player-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.compare-play-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+
+.compare-play-btn:hover {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+}
+
+.compare-speed-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  cursor: pointer;
 }
 
 .compare-modal-footer {
