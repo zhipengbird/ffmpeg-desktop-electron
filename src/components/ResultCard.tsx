@@ -34,12 +34,25 @@ export function OutputButtons({ output, small }: { output: string; small?: boole
 }
 
 export default function ResultCard({ output, inputSize, outputSize, notice, skipped, compact }: Props) {
+  const onDragStart = (e: React.DragEvent) => {
+    e.preventDefault()
+    if (output) window.api.startDrag(output)
+  }
+
   return (
-    <div className={`result-card ${skipped ? 'skipped' : ''} ${compact ? 'compact' : ''}`}>
+    <div
+      className={`result-card ${skipped ? 'skipped' : ''} ${compact ? 'compact' : ''}`}
+      draggable={!skipped}
+      onDragStart={skipped ? undefined : onDragStart}
+      title={skipped ? undefined : '按住卡片可直接拖拽文件到桌面或微信'}
+    >
       <div className="result-main">
-        <span className="result-icon">{skipped ? '↷' : '✓'}</span>
+        <span className="result-icon" title={skipped ? undefined : '可拖拽导出'}>{skipped ? '↷' : '✓'}</span>
         <div className="result-info">
-          <div className="result-title">{skipped ? '已跳过（目标文件已存在）' : '处理完成'}</div>
+          <div className="result-title">
+            {skipped ? '已跳过（目标文件已存在）' : '处理完成'}
+            {!skipped && <span className="drag-badge">可拖出 ↗</span>}
+          </div>
           <div className="result-file" title={output}>{basename(output)}</div>
           {!skipped && <div className="result-sizes"><SizeChange inputSize={inputSize} outputSize={outputSize} /></div>}
         </div>

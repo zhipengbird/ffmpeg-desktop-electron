@@ -133,14 +133,15 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
     setEnd(Math.max(current, start + 0.05))
   }, [current, start])
 
-  // 键盘快捷键：I 起点 / O 终点 / 空格 播放暂停 / ←→ 后退前进 1 秒
+  // 键盘快捷键：I/[ 起点 / O/] 终点 / 空格 播放暂停 / ←→ 微调 / Esc 取消
   useEffect(() => {
     if (!file || duration <= 0 || !active) return
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
       const k = e.key.toLowerCase()
-      if (k === 'i') { e.preventDefault(); markIn() }
-      else if (k === 'o') { e.preventDefault(); markOut() }
+      if (k === 'i' || e.key === '[') { e.preventDefault(); markIn() }
+      else if (k === 'o' || e.key === ']') { e.preventDefault(); markOut() }
+      else if (e.key === 'Escape' && job.running) { e.preventDefault(); job.cancel() }
       else if (e.code === 'Space') {
         e.preventDefault()
         // 避免焦点按钮在 keyup 时再次被“点击”
@@ -149,12 +150,13 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
       }
       else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement)?.getAttribute?.('role')) {
         e.preventDefault()
-        seek(current + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 5 : 1))
+        const step = e.shiftKey ? 1 : 0.1
+        seek(current + (e.key === 'ArrowLeft' ? -step : step))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [file, duration, markIn, markOut, togglePlay, seek, current, active])
+  }, [file, duration, markIn, markOut, togglePlay, seek, current, active, job])
 
   // 切换到其他标签时暂停预览
   useEffect(() => {
@@ -252,7 +254,7 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
               <div className="static-value">{formatPreciseTime(segLen)}</div>
             </div>
           </div>
-          <div className="shortcut-tip">快捷键：<kbd>I</kbd> 设为起点 · <kbd>O</kbd> 设为终点 · <kbd>空格</kbd> 播放/暂停 · <kbd>←</kbd><kbd>→</kbd> 后退/前进 1 秒（Shift 5 秒）</div>
+          <div className="shortcut-tip">快捷键：<kbd>I</kbd> 或 <kbd>[</kbd> 设为起点 · <kbd>O</kbd> 或 <kbd>]</kbd> 设为终点 · <kbd>空格</kbd> 播放/暂停 · <kbd>←</kbd><kbd>→</kbd> 逐帧微调（Shift 加速） · <kbd>Esc</kbd> 取消</div>
         </div>
       )}
 

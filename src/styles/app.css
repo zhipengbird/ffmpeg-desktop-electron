@@ -680,3 +680,38 @@ input.invalid, .form-group input.invalid { border-color: var(--danger) !importan
 .mc-title { font-weight: 600; margin-bottom: 4px; }
 .mode-card.active .mc-title { color: var(--accent); }
 .mc-desc { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+
+/* Drag out styling */
+.drag-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent);
+  font-weight: normal;
+  vertical-align: middle;
+}
+
+.result-card[draggable="true"] {
+  cursor: grab;
+}
+
+.result-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.draggable-file {
+  cursor: grab;
+  text-decoration: underline dotted;
+  transition: color 0.15s;
+}
+
+.draggable-file:hover {
+  color: var(--accent);
+}
+
+.draggable-file:active {
+  cursor: grabbing;
+}

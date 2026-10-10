@@ -44,7 +44,14 @@ function ItemRow({ item, queue }: { item: QueueItem; queue: QueueApi }) {
       {item.status === 'done' && item.output && (
         <div className="qi-result">
           <div className="qi-result-text">
-            <span className="qi-out" title={item.output}>{basename(item.output)}</span>
+            <span
+              className="qi-out draggable-file"
+              title={`${basename(item.output)}（按住可直接拖拽到桌面或微信）`}
+              draggable
+              onDragStart={(e) => { e.preventDefault(); window.api.startDrag(item.output!) }}
+            >
+              {basename(item.output)}
+            </span>
             <SizeChange inputSize={item.inputSize} outputSize={item.outputSize ?? 0} />
           </div>
           <OutputButtons output={item.output} small />
