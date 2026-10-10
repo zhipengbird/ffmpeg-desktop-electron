@@ -8,7 +8,8 @@ export default defineConfig({
     react(),
     electron({
       main: {
-        entry: 'electron/main.ts',
+        // image-worker：sharp 图片处理子进程（Linux 上隔离 glib 冲突）
+        entry: ['electron/main.ts', 'electron/image-worker.ts'],
         vite: {
           build: {
             outDir: 'dist-electron',
@@ -16,7 +17,6 @@ export default defineConfig({
               external: [
                 'ffmpeg-static',
                 'ffprobe-static',
-                'fluent-ffmpeg',
                 'sharp',
                 'electron'
               ]
