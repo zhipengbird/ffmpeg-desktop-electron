@@ -8,6 +8,7 @@ import {
   TaskQueue, SettingsStore, PathReservations, detectHwEncoders, cancelJob, cancelAllJobs,
   probeMedia, mapError, JobFailedError, parseRange, mimeFor, mediaUrlToPath, pathToMediaUrl,
   compressTask, convertTask, separateTask, imageTask, trimTask, mergeTask, extractFrame,
+  generateContactSheet, extractAudioWaveform,
   type TaskEnv, type TaskWorker, type TrimParams, type MergeParams
 } from './core'
 import {
@@ -527,6 +528,33 @@ ipcMain.handle('media:compareFrames', async (_e, opts: { original: string; proce
     }
   } catch (e) {
     console.error('[media:compareFrames] 截取对比帧失败', e)
+    throw e
+  }
+})
+
+ipcMain.handle('media:waveform', async (_e, opts: { input: string; bars?: number }): Promise<number[]> => {
+  if (!opts?.input || !fs.existsSync(opts.input)) return []
+  try {
+    return await extractAudioWaveform(opts.input, opts.bars ?? 100)
+  } catch (e) {
+    console.warn('[media:waveform] 提取失败:', e)
+    return []
+  }
+})
+
+ipcMain.handle('media:contactSheet', async (_e, opts: { input: string; rows?: number; cols?: number; showTimecode?: boolean }): Promise<{ output: string; size: number; thumbUrl: string }> => {
+  try {
+    const res = await generateContactSheet(opts)
+    allowMedia(res.output)
+    const buf = await fs.promises.readFile(res.output)
+    const thumbUrl = `data:image/jpeg;base64,${buf.toString('base64')}`
+    return {
+      output: res.output,
+      size: res.size,
+      thumbUrl
+    }
+  } catch (e) {
+    console.error('[media:contactSheet] 生成失败:', e)
     throw e
   }
 })

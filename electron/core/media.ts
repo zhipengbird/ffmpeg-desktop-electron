@@ -1,6 +1,8 @@
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import { spawn } from 'child_process'
+import { getFfmpegPath } from './binaries'
 import type { QualityPreset } from '../../shared/types'
 import { runFfmpeg, type ProgressCallback } from './runner'
 import { probeMedia, type MediaInfo } from './probe'
@@ -587,4 +589,114 @@ export async function extractFrame(filePath: string, timestampSec = 1): Promise<
   }
 
   return outPath
+}
+
+export interface ContactSheetParams {
+  jobId?: string
+  input: string
+  output?: string
+  rows?: number // 默认 3
+  cols?: number // 默认 3
+  showTimecode?: boolean // 默认 true
+  onProgress?: ProgressCallback
+}
+
+/**
+ * 生成视频剧情概览矩阵大图（Contact Sheet / 电影分镜长图）。
+ * 均匀抽取帧，并在每帧打上时间码标记，输出例如 3x3 或 4x4 的精美总览大图。
+ */
+export async function generateContactSheet(o: ContactSheetParams): Promise<{ output: string; size: number }> {
+  const p = await safeProbe(o.input)
+  const duration = p?.duration || 0
+  if (duration <= 0) {
+    throw new Error('无法读取该视频的时长，无法生成概览矩阵大图')
+  }
+
+  const rows = Math.max(1, Math.min(6, o.rows ?? 3))
+  const cols = Math.max(1, Math.min(6, o.cols ?? 3))
+  const count = rows * cols
+  // 采样率：在总时长内均匀取 count 帧
+  const fps = Math.max(0.001, count / duration).toFixed(4)
+  const showTc = o.showTimecode ?? true
+
+  const outPath = o.output || path.join(
+    path.dirname(o.input),
+    `${path.basename(o.input, path.extname(o.input))}_剧情概览_${cols}x${rows}.jpg`
+  )
+
+  let vf = `fps=${fps},scale=360:-1`
+  if (showTc) {
+    vf += `,drawtext=text='%{pts\\:hms}':x=10:y=h-th-10:fontcolor=white:box=1:boxcolor=black@0.6`
+  }
+  vf += `,tile=${cols}x${rows}`
+
+  await runFfmpeg({
+    jobId: o.jobId || `cs_${Date.now()}`,
+    args: ['-i', o.input, '-vf', vf, '-frames:v', '1', '-q:v', '2', '-y', outPath],
+    duration: 0,
+    onProgress: o.onProgress
+  })
+
+  if (!fs.existsSync(outPath) || fs.statSync(outPath).size === 0) {
+    throw new Error('生成剧情概览大图失败')
+  }
+
+  return { output: outPath, size: fs.statSync(outPath).size }
+}
+
+/**
+ * 极速提取媒体文件的音频波形峰值数据（归一化 0.0 ~ 1.0 数组）。
+ * 采用 1000Hz 低频重采样，毫秒级流式读取计算，专用于时间轴声波起伏可视化。
+ */
+export async function extractAudioWaveform(filePath: string, bars = 100): Promise<number[]> {
+  const ffmpeg = getFfmpegPath()
+  return new Promise((resolve) => {
+    const child = spawn(ffmpeg, [
+      '-i', filePath,
+      '-vn',
+      '-ac', '1',
+      '-ar', '1000',
+      '-f', 's16le',
+      '-'
+    ])
+
+    const chunks: Buffer[] = []
+    child.stdout.on('data', (c) => chunks.push(c))
+    child.stderr.on('data', () => { /* ignore */ })
+
+    child.on('close', (code) => {
+      if (code !== 0 || chunks.length === 0) {
+        resolve([])
+        return
+      }
+      const buf = Buffer.concat(chunks)
+      const totalSamples = Math.floor(buf.length / 2)
+      if (totalSamples === 0) {
+        resolve([])
+        return
+      }
+
+      const targetBars = Math.max(20, Math.min(300, bars))
+      const blockSize = Math.max(1, Math.floor(totalSamples / targetBars))
+      const peaks: number[] = []
+      let maxPeak = 1
+
+      for (let i = 0; i < targetBars; i++) {
+        const start = i * blockSize
+        const end = Math.min(totalSamples, start + blockSize)
+        let blockPeak = 0
+        for (let j = start; j < end; j++) {
+          const val = Math.abs(buf.readInt16LE(j * 2))
+          if (val > blockPeak) blockPeak = val
+        }
+        peaks.push(blockPeak)
+        if (blockPeak > maxPeak) maxPeak = blockPeak
+      }
+
+      const normalized = peaks.map((p) => Number((p / maxPeak).toFixed(3)))
+      resolve(normalized)
+    })
+
+    child.on('error', () => resolve([]))
+  })
 }

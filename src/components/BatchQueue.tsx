@@ -6,6 +6,7 @@ import ProgressBar from './ProgressBar'
 import ErrorCard from './ErrorCard'
 import { OutputButtons, SizeChange } from './ResultCard'
 import CompareModal from './CompareModal'
+import ContactSheetModal from './ContactSheetModal'
 import { useSettings } from '../hooks/useSettings'
 
 interface Props {
@@ -17,7 +18,24 @@ interface Props {
   concurrencyKey: 'concurrency' | 'imageConcurrency'
 }
 
-function ItemRow({ item, queue, onCompare }: { item: QueueItem; queue: QueueApi; onCompare?: (item: QueueItem) => void }) {
+const VIDEO_EXTS = ['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v', '.flv']
+function isVideo(p?: string): boolean {
+  if (!p) return false
+  const ext = p.slice(p.lastIndexOf('.')).toLowerCase()
+  return VIDEO_EXTS.includes(ext)
+}
+
+function ItemRow({
+  item,
+  queue,
+  onCompare,
+  onContactSheet
+}: {
+  item: QueueItem
+  queue: QueueApi
+  onCompare?: (item: QueueItem) => void
+  onContactSheet?: (item: QueueItem) => void
+}) {
   const canRetry = item.status === 'failed' || item.status === 'cancelled'
   return (
     <li className={`queue-item status-${item.status}`}>
@@ -56,13 +74,22 @@ function ItemRow({ item, queue, onCompare }: { item: QueueItem; queue: QueueApi;
             </span>
             <SizeChange inputSize={item.inputSize} outputSize={item.outputSize ?? 0} />
           </div>
-          <OutputButtons output={item.output} small onCompare={() => onCompare?.(item)} />
+          <OutputButtons
+            output={item.output}
+            small
+            onCompare={() => onCompare?.(item)}
+            onContactSheet={isVideo(item.output) ? () => onContactSheet?.(item) : undefined}
+          />
         </div>
       )}
       {item.status === 'skipped' && item.output && (
         <div className="qi-result">
           <div className="qi-result-text muted">目标已存在，已跳过：<span className="qi-out">{basename(item.output)}</span></div>
-          <OutputButtons output={item.output} small />
+          <OutputButtons
+            output={item.output}
+            small
+            onContactSheet={isVideo(item.output) ? () => onContactSheet?.(item) : undefined}
+          />
         </div>
       )}
       {item.notice && item.status === 'done' && <div className="qi-notice">ℹ {item.notice}</div>}
@@ -75,6 +102,7 @@ export default function BatchQueue({ queue, onStartAll, startLabel, startDisable
   const { snap, summary } = queue
   const { settings, update } = useSettings()
   const [compareTarget, setCompareTarget] = useState<{ original: string; processed: string } | null>(null)
+  const [contactSheetFile, setContactSheetFile] = useState<string | null>(null)
   const finished = summary.done + summary.failed + summary.cancelled + summary.skipped
   const hasPending = summary.pending > 0
   const active = summary.pending + summary.running > 0
@@ -112,6 +140,7 @@ export default function BatchQueue({ queue, onStartAll, startLabel, startDisable
               item={it}
               queue={queue}
               onCompare={(item) => item.output && setCompareTarget({ original: item.input, processed: item.output })}
+              onContactSheet={(item) => item.output && setContactSheetFile(item.output)}
             />
           ))}
         </ul>
@@ -140,6 +169,13 @@ export default function BatchQueue({ queue, onStartAll, startLabel, startDisable
           original={compareTarget.original}
           processed={compareTarget.processed}
           onClose={() => setCompareTarget(null)}
+        />
+      )}
+
+      {contactSheetFile && (
+        <ContactSheetModal
+          file={contactSheetFile}
+          onClose={() => setContactSheetFile(null)}
         />
       )}
     </>

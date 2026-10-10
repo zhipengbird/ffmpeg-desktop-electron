@@ -6,6 +6,7 @@ import ErrorCard from './ErrorCard'
 import RangeSlider from './RangeSlider'
 import TimeInput from './TimeInput'
 import OutputHint from './OutputHint'
+import ContactSheetModal from './ContactSheetModal'
 import { useJob } from '../hooks/useJob'
 import { formatPreciseTime, isAudio } from '../utils/format'
 
@@ -34,6 +35,8 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
   const [playing, setPlaying] = useState(false)
   const [looping, setLooping] = useState(false)
   const [mode, setMode] = useState<Mode>('fast')
+  const [peaks, setPeaks] = useState<number[]>([])
+  const [contactSheetTarget, setContactSheetTarget] = useState<string | null>(null)
   const job = useJob()
   const mediaRef = useRef<HTMLVideoElement & HTMLAudioElement>(null)
   const rafRef = useRef<number>(0)
@@ -66,6 +69,11 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
       setEnd(d)
     })
     window.api.allowMedia(file).then((u) => { if (alive) setUrl(u) })
+    window.api.waveform(file, 120).then((data) => {
+      if (alive) setPeaks(data)
+    }).catch(() => {
+      if (alive) setPeaks([])
+    })
     return () => { alive = false }
   }, [file])
 
@@ -158,6 +166,8 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
     setStart(0)
     setEnd(0)
     setDuration(0)
+    setPeaks([])
+    setContactSheetTarget(null)
     setProbeError(null)
     job.reset()
   }, [job])
@@ -302,6 +312,16 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
             </button>
             <span className="time-display">{formatPreciseTime(current)} / {formatPreciseTime(duration)}</span>
             <div className="spacer" />
+            {hasVideo && duration > 0 && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setContactSheetTarget(file)}
+                disabled={duration <= 0}
+                title="按等间隔抽取关键帧生成 9 宫格 / 16 宫格分镜长图"
+              >
+                📸 剧情长图
+              </button>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={markIn} disabled={duration <= 0} title="快捷键 I">⇤ 设为起点</button>
             <button className="btn btn-ghost btn-sm" onClick={markOut} disabled={duration <= 0} title="快捷键 O">设为终点 ⇥</button>
             <button className={`btn btn-sm ${looping ? 'btn-primary' : 'btn-ghost'}`} onClick={playSelection} disabled={preview !== 'ok'} title="循环播放选中片段">
@@ -310,7 +330,7 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
           </div>
 
           {duration > 0 ? (
-            <RangeSlider duration={duration} start={start} end={end} current={current} onChange={setRange} onSeek={seek} disabled={job.running} />
+            <RangeSlider duration={duration} start={start} end={end} current={current} peaks={peaks} onChange={setRange} onSeek={seek} disabled={job.running} />
           ) : (
             probeError ? <ErrorCard error={{ code: 'FORMAT', message: probeError }} /> : <div className="muted-note">正在读取时长…</div>
           )}
@@ -356,9 +376,20 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
           </div>
           {job.running && <ProgressBar percent={job.percent} timemark={job.timemark} />}
           {job.result && (job.result.ok
-            ? <ResultCard output={job.result.output} inputSize={job.result.inputSize} outputSize={job.result.outputSize} notice={job.result.notice} skipped={job.result.skipped} />
+            ? <ResultCard
+                output={job.result.output}
+                inputSize={job.result.inputSize}
+                outputSize={job.result.outputSize}
+                notice={job.result.notice}
+                skipped={job.result.skipped}
+                onContactSheet={hasVideo && job.result.output ? () => setContactSheetTarget((job.result as any).output) : undefined}
+              />
             : <ErrorCard error={job.result.error} title="截取失败" />)}
         </div>
+      )}
+
+      {contactSheetTarget && (
+        <ContactSheetModal file={contactSheetTarget} onClose={() => setContactSheetTarget(null)} />
       )}
     </>
   )

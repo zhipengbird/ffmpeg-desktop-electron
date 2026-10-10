@@ -637,6 +637,32 @@ await test('mediaUrlToPath 能够正确处理无论是否被 Chromium 规范化�
   return 'mediaUrlToPath POSIX 路径与 Chromium 规范化双向兼容'
 })
 
+await test('视频剧情概览矩阵长图生成 (generateContactSheet 3x3 9宫格)', async () => {
+  const out = path.join(work, 'contact_sheet_test.jpg')
+  const r = await core.generateContactSheet({
+    input: sampleMp4,
+    output: out,
+    rows: 3,
+    cols: 3,
+    showTimecode: true
+  })
+  assert(fs.existsSync(r.output), '剧情长图文件未生成')
+  assert(r.size > 1000, '剧情长图文件尺寸过小')
+  const meta = await sharp(r.output).metadata()
+  assert(meta.width > 0 && meta.height > 0, '图像分辨率无效')
+  return `成功生成 3x3 分镜长图：${meta.width}x${meta.height}，体积=${(r.size / 1024).toFixed(1)} KB`
+})
+
+await test('真实声波峰值起伏提取 (extractAudioWaveform 毫秒级提取 80 点)', async () => {
+  const peaks = await core.extractAudioWaveform(sampleMp4, 80)
+  assert(Array.isArray(peaks), '返回值应为数组')
+  assert(peaks.length === 80, `峰值点数量不符: ${peaks.length}`)
+  assert(peaks.every((p) => p >= 0 && p <= 1), '峰值点应均在 [0, 1] 归一化区间')
+  const nonZero = peaks.filter((p) => p > 0.01).length
+  assert(nonZero > 10, '有声视频应提取到有效起伏')
+  return `成功提取 80 个归一化波形点，最大峰值=${Math.max(...peaks)}`
+})
+
 // =====================================================
 const failed = results.filter((r) => !r.ok)
 console.log(`\n结果：${results.length - failed.length}/${results.length} 通过${failed.length ? `，失败：\n - ${failed.map((f) => `${f.name}: ${f.note}`).join('\n - ')}` : ''}`)

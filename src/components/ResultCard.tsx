@@ -11,6 +11,7 @@ interface Props {
   compact?: boolean
   onDismiss?: () => void
   onCompare?: () => void
+  onContactSheet?: () => void
 }
 
 export function SizeChange({ inputSize, outputSize }: { inputSize: number; outputSize: number }) {
@@ -26,7 +27,17 @@ export function SizeChange({ inputSize, outputSize }: { inputSize: number; outpu
   )
 }
 
-export function OutputButtons({ output, small, onCompare }: { output: string; small?: boolean; onCompare?: () => void }) {
+export function OutputButtons({
+  output,
+  small,
+  onCompare,
+  onContactSheet
+}: {
+  output: string
+  small?: boolean
+  onCompare?: () => void
+  onContactSheet?: () => void
+}) {
   const cls = small ? 'btn btn-ghost btn-xs' : 'btn btn-ghost btn-sm'
   return (
     <div className="output-buttons">
@@ -35,13 +46,27 @@ export function OutputButtons({ output, small, onCompare }: { output: string; sm
           🔍 对比画质
         </button>
       )}
+      {onContactSheet && (
+        <button className={cls} onClick={onContactSheet} title="生成剧情分镜 9 宫格 / 16 宫格长图">
+          📸 剧情长图
+        </button>
+      )}
       <button className={cls} onClick={() => window.api.openFile(output)} title="用系统默认程序打开">打开文件</button>
       <button className={cls} onClick={() => window.api.showItem(output)}>{showInFolderLabel(window.api.platform)}</button>
     </div>
   )
 }
 
-export default function ResultCard({ output, inputSize, outputSize, notice, skipped, compact, onCompare }: Props) {
+export default function ResultCard({
+  output,
+  inputSize,
+  outputSize,
+  notice,
+  skipped,
+  compact,
+  onCompare,
+  onContactSheet
+}: Props) {
   const onDragStart = (e: React.DragEvent) => {
     e.preventDefault()
     if (output) window.api.startDrag(output)
@@ -64,7 +89,7 @@ export default function ResultCard({ output, inputSize, outputSize, notice, skip
           <div className="result-file" title={output}>{basename(output)}</div>
           {!skipped && <div className="result-sizes"><SizeChange inputSize={inputSize} outputSize={outputSize} /></div>}
         </div>
-        <OutputButtons output={output} onCompare={onCompare} />
+        <OutputButtons output={output} onCompare={onCompare} onContactSheet={onContactSheet} />
       </div>
       {notice && <div className="result-notice">ℹ {notice}</div>}
     </div>

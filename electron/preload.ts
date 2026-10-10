@@ -34,6 +34,10 @@ const api = {
     ipcRenderer.invoke('media:merge', opts) as Promise<JobResult>,
   compareFrames: (opts: { original: string; processed: string; timestamp?: number }) =>
     ipcRenderer.invoke('media:compareFrames', opts) as Promise<{ originalThumb: string; processedThumb: string }>,
+  waveform: (input: string, bars?: number) =>
+    ipcRenderer.invoke('media:waveform', { input, bars }) as Promise<number[]>,
+  contactSheet: (opts: { input: string; rows?: number; cols?: number; showTimecode?: boolean }) =>
+    ipcRenderer.invoke('media:contactSheet', opts) as Promise<{ output: string; size: number; thumbUrl: string }>,
   onProgress: (cb: (e: ProgressEvent) => void) => listen<ProgressEvent>('job:progress', cb),
 
   queue: {

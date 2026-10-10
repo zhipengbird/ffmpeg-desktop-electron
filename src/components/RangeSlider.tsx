@@ -1,11 +1,13 @@
 import { useCallback, useRef, type KeyboardEvent, type PointerEvent } from 'react'
 import { formatDuration } from '../utils/format'
+import WaveformBar from './WaveformBar'
 
 interface Props {
   duration: number
   start: number
   end: number
   current: number
+  peaks?: number[]
   onChange: (start: number, end: number) => void
   onSeek: (t: number) => void
   disabled?: boolean
@@ -14,7 +16,7 @@ interface Props {
 const MIN_GAP = 0.05
 
 /** 双滑块时间轴：起点 / 终点手柄 + 播放头，点击轨道可跳转。 */
-export default function RangeSlider({ duration, start, end, current, onChange, onSeek, disabled }: Props) {
+export default function RangeSlider({ duration, start, end, current, peaks, onChange, onSeek, disabled }: Props) {
   const trackRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<'start' | 'end' | 'seek' | null>(null)
   const isInvalid = !Number.isFinite(duration) || duration <= 0
@@ -76,6 +78,9 @@ export default function RangeSlider({ duration, start, end, current, onChange, o
         onPointerUp={onUp}
         onPointerCancel={onUp}
       >
+        {peaks && peaks.length > 0 && (
+          <WaveformBar peaks={peaks} duration={duration} start={start} end={end} currentTime={current} />
+        )}
         <div className="rs-sel" style={{ left: pct(start), width: `calc(${pct(end)} - ${pct(start)})` }} />
         <div className="rs-playhead" style={{ left: pct(current) }} />
         <div
