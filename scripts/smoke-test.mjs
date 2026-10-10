@@ -599,6 +599,17 @@ await test('多视频智能重编码合并 (concatMedia transcode 模式)', asyn
   return `重编码完成，时长约 ${p.duration.toFixed(2)}s`
 })
 
+await test('多视频智能重编码合并 + 广播级音量标准化 (loudnorm 在 filter_complex 中生效)', async () => {
+  const seg1 = copyTo(sampleMp4, 'seg_norm1.mp4')
+  const seg2 = copyTo(long, 'seg_norm2.mp4') // 3s 与 8s，不同规格
+  const out = path.join(work, 'merged_loudnorm.mp4')
+  const r = await core.concatMedia({ jobId: nextJob(), inputs: [seg1, seg2], output: out, mode: 'auto', normalizeAudio: true })
+  assert(fs.existsSync(out), '输出文件不存在')
+  const p = probe(out)
+  approx(p.duration, 11, 0.8, '合并后时长')
+  return `不同规格 + loudnorm 音量标准化成功，时长约 ${p.duration.toFixed(2)}s`
+})
+
 await test('画质前后对比关键帧提取 (extractFrame)', async () => {
   const frame = await core.extractFrame(sampleMp4, 1)
   assert(fs.existsSync(frame), '截取的关键帧图片不存在')

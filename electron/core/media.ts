@@ -499,11 +499,12 @@ export async function concatMedia(o: ConcatOpts): Promise<MediaOpResult> {
     concatInputs.push(`[v${i}][a${i}]`)
   }
 
-  const concatFilter = `${filterChains.join('; ')}; ${concatInputs.join('')}concat=n=${n}:v=1:a=1[outv][outa]`
-
-  // 音频处理
-  const normArgs = loudnormArgs(o.normalizeAudio)
-  const audioFilter = normArgs.length > 0 ? ['-filter:a', 'loudnorm=I=-16:TP=-1.5:LRA=11'] : []
+  let concatFilter = `${filterChains.join('; ')}; ${concatInputs.join('')}concat=n=${n}:v=1:a=1[outv]`
+  if (o.normalizeAudio) {
+    concatFilter += `[concat_a]; [concat_a]loudnorm=I=-16:TP=-1.5:LRA=11[outa]`
+  } else {
+    concatFilter += `[outa]`
+  }
 
   // 视频编码器：优先使用硬件加速，否则 libx264
   let videoCodecArgs = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p']
@@ -524,7 +525,6 @@ export async function concatMedia(o: ConcatOpts): Promise<MediaOpResult> {
       ...videoCodecArgs,
       '-c:a', 'aac',
       '-b:a', '192k',
-      ...audioFilter,
       ...metadataArgs(o.stripMetadata),
       ...containerArgs(o.output),
       tmp
