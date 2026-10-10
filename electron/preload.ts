@@ -22,6 +22,7 @@ const api = {
   openFile: (p: string) => ipcRenderer.invoke('shell:openFile', p) as Promise<boolean>,
   openPath: (p: string) => ipcRenderer.invoke('shell:openPath', p) as Promise<boolean>,
   showItem: (p: string) => ipcRenderer.invoke('shell:showItem', p) as Promise<boolean>,
+  startDrag: (p: string) => ipcRenderer.send('shell:startDrag', p),
   stat: (p: string) => ipcRenderer.invoke('fs:stat', p) as Promise<{ size: number; isFile: boolean; mtime: number } | null>,
   probe: (p: string) => ipcRenderer.invoke('media:probe', p) as Promise<Record<string, unknown>>,
   imageInfo: (p: string) => ipcRenderer.invoke('image:info', p) as Promise<Record<string, unknown>>,

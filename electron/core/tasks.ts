@@ -6,8 +6,8 @@ import { cancelledError, JobFailedError, mapError } from './errors'
 import { decideOutputPath, PathReservations } from './naming'
 import { safeSize } from './probe'
 import {
-  audioTargetFor, compressMedia, convertFormat, isAudioOnly, preciseTrimExt, safeProbe,
-  separateStreams, silentVideoExt, trimMedia, type MediaOpResult, type TrimMode
+  audioTargetFor, compressMedia, convertFormat, isAudioOnly, preciseTrimExt, rawAudioExt, safeProbe,
+  separateStreams, silentVideoExt, trimMedia, type MediaOpResult, type SeparateMode, type TrimMode
 } from './media'
 import { compressImage, imageExt, resolveImageFormat, type ImageCompressOptions, type ImageFormatChoice } from './image'
 import { chooseHwEncoder } from './hwaccel'
@@ -25,7 +25,7 @@ export interface TaskEnv {
 
 export interface CompressParams { preset: QualityPreset; customCrf?: number; customAudioBitrate?: string }
 export interface ImageParams { preset: QualityPreset; format: ImageFormatChoice; customQuality?: number }
-export interface SeparateParams { mode: 'audio' | 'video' }
+export interface SeparateParams { mode: SeparateMode }
 export interface ConvertParams { format: string }
 export interface TrimParams { start: number; end: number; mode: TrimMode }
 
@@ -97,8 +97,19 @@ export async function convertTask(item: Readonly<QueueItem>, p: ConvertParams, c
 export async function separateTask(item: Readonly<QueueItem>, p: SeparateParams, ctx: TaskContext, env: TaskEnv): Promise<JobSuccess> {
   linkAbort(ctx)
   const info = await safeProbe(item.input)
-  const ext = p.mode === 'audio' ? '.mp3' : silentVideoExt(item.input)
-  return withOutput(item.input, p.mode === 'audio' ? '音频' : '无声视频', ext, env, ctx, (output) => separateStreams({
+  let ext: string
+  let suffix: string
+  if (p.mode === 'audio') {
+    ext = '.mp3'
+    suffix = '音频'
+  } else if (p.mode === 'audio-copy') {
+    ext = rawAudioExt(info?.audio?.codec)
+    suffix = '原音频'
+  } else {
+    ext = silentVideoExt(item.input)
+    suffix = '无声视频'
+  }
+  return withOutput(item.input, suffix, ext, env, ctx, (output) => separateStreams({
     jobId: ctx.jobId, input: item.input, output, info, mode: p.mode, onProgress: ctx.onProgress
   }))
 }

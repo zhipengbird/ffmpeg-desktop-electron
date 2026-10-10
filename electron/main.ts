@@ -153,15 +153,65 @@ const env: TaskEnv = {
 
 const queues = new Map<QueueKind, TaskQueue<any>>()
 
+function updateAppProgressBar(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  let anyRunning = false
+  let anyError = false
+  let completed = 0
+  let total = 0
+  let runningProgress = 0
+
+  for (const [, q] of queues) {
+    const s = q.snapshot()
+    if (s.running) anyRunning = true
+    for (const it of s.items) {
+      total++
+      if (it.status === 'done' || it.status === 'skipped') {
+        completed++
+      } else if (it.status === 'failed') {
+        completed++
+        anyError = true
+      } else if (it.status === 'running') {
+        runningProgress += Math.max(0, (it.percent ?? 0) / 100)
+      }
+    }
+  }
+
+  if (singleJobs.size > 0) {
+    anyRunning = true
+  }
+
+  if (!anyRunning || total === 0) {
+    mainWindow.setProgressBar(-1)
+    return
+  }
+
+  const ratio = Math.min(0.99, Math.max(0.01, (completed + runningProgress) / total))
+  try {
+    mainWindow.setProgressBar(ratio, { mode: anyError ? 'error' : 'normal' })
+  } catch {
+    mainWindow.setProgressBar(ratio)
+  }
+}
+
 function makeQueue<P>(kind: QueueKind, worker: (item: QueueItem, p: P, ctx: Parameters<TaskWorker<P>>[2], env: TaskEnv) => ReturnType<TaskWorker<P>>): void {
   const s = settingsStore.get()
   const q = new TaskQueue<P>({
     kind,
     concurrency: kind === 'image' ? s.imageConcurrency : s.concurrency,
     worker: (item, p, ctx) => worker(item, p, ctx, env),
-    onChange: (snap) => send('queue:changed', snap),
-    onProgress: (k, id, percent, timemark) => send('queue:progress', { kind: k, id, percent, timemark }),
-    onDrain: (items) => onBatchDrain(kind, items),
+    onChange: (snap) => {
+      send('queue:changed', snap)
+      updateAppProgressBar()
+    },
+    onProgress: (k, id, percent, timemark) => {
+      send('queue:progress', { kind: k, id, percent, timemark })
+      updateAppProgressBar()
+    },
+    onDrain: (items) => {
+      onBatchDrain(kind, items)
+      updateAppProgressBar()
+    },
     onCancelRunning: (item) => cancelJob(item.id),
     sizeOf: (p) => { try { return fs.statSync(p).size } catch { return 0 } }
   })
@@ -285,6 +335,16 @@ ipcMain.handle('shell:showItem', async (_e, targetPath: string) => {
   return true
 })
 
+ipcMain.on('shell:startDrag', (event, targetPath: string) => {
+  if (!targetPath || typeof targetPath !== 'string' || !fs.existsSync(targetPath)) return
+  const iconCandidate = path.join(__dirname, '../resources/icon-512.png')
+  const icon = fs.existsSync(iconCandidate) ? iconCandidate : path.join(__dirname, '../resources/icon.png')
+  event.sender.startDrag({
+    file: targetPath,
+    icon
+  })
+})
+
 ipcMain.handle('fs:stat', async (_e, p: string) => {
   try {
     const s = fs.statSync(p)
@@ -335,11 +395,17 @@ ipcMain.handle('job:cancel', async (_e, jobId: string) => {
 ipcMain.handle('media:trim', async (_e, opts: { jobId: string; input: string } & TrimParams): Promise<JobResult> => {
   const ctrl = new AbortController()
   singleJobs.set(opts.jobId, ctrl)
+  updateAppProgressBar()
   try {
     const res = await trimTask(opts.input, { start: opts.start, end: opts.end, mode: opts.mode }, {
       jobId: opts.jobId,
       signal: ctrl.signal,
-      onProgress: (percent, timemark) => send('job:progress', { jobId: opts.jobId, percent, timemark })
+      onProgress: (percent, timemark) => {
+        send('job:progress', { jobId: opts.jobId, percent, timemark })
+        if (typeof percent === 'number') {
+          mainWindow?.setProgressBar(Math.min(0.99, Math.max(0.01, percent / 100)))
+        }
+      }
     }, env)
     const name = path.basename(res.output)
     if (res.skipped) notify('裁剪已跳过', `${name} 已存在`, res.output)
@@ -354,6 +420,7 @@ ipcMain.handle('media:trim', async (_e, opts: { jobId: string; input: string } &
     return { ok: false, error: job }
   } finally {
     singleJobs.delete(opts.jobId)
+    updateAppProgressBar()
   }
 })
 

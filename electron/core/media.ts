@@ -188,8 +188,23 @@ export async function convertFormat(o: ConvertOpts): Promise<MediaOpResult> {
   return { output: o.output, encoder: f === 'webm' ? 'libvpx-vp9' : undefined }
 }
 
+export type SeparateMode = 'audio' | 'video' | 'audio-copy'
+
 export interface SeparateOpts extends BaseOpts {
-  mode: 'audio' | 'video'
+  mode: SeparateMode
+}
+
+/** 流复制提取音频时根据编码器推导最佳容器后缀 */
+export function rawAudioExt(codecName?: string): string {
+  const c = (codecName || '').toLowerCase()
+  if (c === 'aac') return '.m4a'
+  if (c === 'mp3') return '.mp3'
+  if (c === 'opus') return '.opus'
+  if (c === 'flac') return '.flac'
+  if (c === 'vorbis') return '.ogg'
+  if (c === 'alac') return '.m4a'
+  if (c.startsWith('pcm_')) return '.wav'
+  return '.m4a'
 }
 
 /** 无声视频输出容器：尽量沿用源容器，avi/flv 等改用 mkv 以兼容流复制。 */
@@ -206,6 +221,13 @@ export async function separateStreams(o: SeparateOpts): Promise<MediaOpResult> {
     const ext = path.extname(o.output)
     await withTempOutput(o.output, (tmp) => runFfmpeg({
       jobId: o.jobId, args: ['-i', o.input, '-vn', '-sn', ...audioCodecArgsForExt(ext, '192k'), tmp], duration, onProgress: o.onProgress
+    }))
+    return { output: o.output }
+  }
+  if (o.mode === 'audio-copy') {
+    if (info && !info.audio) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有音频流，无法提取音频' })
+    await withTempOutput(o.output, (tmp) => runFfmpeg({
+      jobId: o.jobId, args: ['-i', o.input, '-vn', '-sn', '-c:a', 'copy', tmp], duration, onProgress: o.onProgress
     }))
     return { output: o.output }
   }
