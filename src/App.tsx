@@ -5,13 +5,14 @@ import SeparatePanel from './components/SeparatePanel'
 import ConvertPanel from './components/ConvertPanel'
 import TrimPanel from './components/TrimPanel'
 import MergePanel from './components/MergePanel'
+import SmartPanel from './components/SmartPanel'
 import InfoPanel from './components/InfoPanel'
 import SettingsPanel from './components/SettingsPanel'
 import { SettingsProvider } from './hooks/useSettings'
 import { useQueue } from './hooks/useQueue'
 import type { QueueKind } from '../shared/types'
 
-type TabId = QueueKind | 'trim' | 'merge' | 'info' | 'settings'
+type TabId = QueueKind | 'trim' | 'merge' | 'smart' | 'info' | 'settings'
 
 const TABS: { id: TabId; icon: string; label: string; title: string; desc: string }[] = [
   { id: 'compress', icon: '🎬', label: '音视频压缩', title: '音视频压缩', desc: '批量压缩视频与音频，支持预设、自定义 CRF/码率与硬件加速' },
@@ -20,6 +21,7 @@ const TABS: { id: TabId; icon: string; label: string; title: string; desc: strin
   { id: 'convert', icon: '🔄', label: '格式转换', title: '格式转换', desc: '在 MP4 / MKV / WebM / MP3 / AAC / WAV 间批量转换' },
   { id: 'trim', icon: '✂️', label: '裁剪截取', title: '裁剪 / 截取时长', desc: '可视化预览选取片段，支持极速（流复制）与精准（重新编码）两种模式' },
   { id: 'merge', icon: '🧩', label: '视频拼接', title: '多视频拼接合并', desc: '批量排序合并多个视频，同规格秒级无损拼接，异规格自动智能合流' },
+  { id: 'smart', icon: '⚡', label: '智能剪辑', title: '智能剪辑工作流', desc: '口播空白停顿跳剪 (Jump Cut)、16:9 横转 9:16 竖屏高斯模糊短视频重构' },
   { id: 'info', icon: 'ℹ️', label: '媒体信息', title: '获取媒体信息', desc: '查看时长、分辨率、编码、码率等详细信息' }
 ]
 
@@ -90,6 +92,7 @@ export default function App() {
             <div hidden={tab !== 'convert'}><ConvertPanel onOpenSettings={openSettings} /></div>
             <div hidden={tab !== 'trim'}><TrimPanel active={tab === 'trim'} onOpenSettings={openSettings} /></div>
             <div hidden={tab !== 'merge'}><MergePanel onOpenSettings={openSettings} /></div>
+            <div hidden={tab !== 'smart'}><SmartPanel onOpenSettings={openSettings} /></div>
             {tab === 'info' && <InfoPanel />}
             {tab === 'settings' && <SettingsPanel />}
           </div>

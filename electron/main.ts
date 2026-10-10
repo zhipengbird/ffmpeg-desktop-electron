@@ -8,8 +8,8 @@ import {
   TaskQueue, SettingsStore, PathReservations, detectHwEncoders, cancelJob, cancelAllJobs,
   probeMedia, mapError, JobFailedError, parseRange, mimeFor, mediaUrlToPath, pathToMediaUrl,
   compressTask, convertTask, separateTask, imageTask, trimTask, mergeTask, extractFrame,
-  generateContactSheet, extractAudioWaveform,
-  type TaskEnv, type TaskWorker, type TrimParams, type MergeParams
+  generateContactSheet, extractAudioWaveform, detectSilence, jumpCutMedia, reframeToVertical,
+  type TaskEnv, type TaskWorker, type TrimParams, type MergeParams, type JumpCutParams, type ReframeParams
 } from './core'
 import {
   summarizeItems, type EncoderInfo, type JobResult, type QueueItem, type QueueKind, type Settings
@@ -556,6 +556,83 @@ ipcMain.handle('media:contactSheet', async (_e, opts: { input: string; rows?: nu
   } catch (e) {
     console.error('[media:contactSheet] 生成失败:', e)
     throw e
+  }
+})
+
+ipcMain.handle('media:detectSilence', async (_e, opts: { input: string; thresholdDb?: number; minDuration?: number }) => {
+  try {
+    return await detectSilence(opts.input, { thresholdDb: opts.thresholdDb, minDuration: opts.minDuration })
+  } catch (e: any) {
+    console.error('[media:detectSilence] 探测失败:', e)
+    throw new Error(e?.message || '静音探测失败')
+  }
+})
+
+ipcMain.handle('media:jumpCut', async (_e, opts: JumpCutParams): Promise<{ ok: boolean; output?: string; size?: number; cutCount?: number; savedSec?: number; error?: string }> => {
+  const jobId = opts.jobId || `jumpcut_${Date.now()}`
+  const ctrl = new AbortController()
+  singleJobs.set(jobId, ctrl)
+  singleJobProgress.set(jobId, 1)
+  updateAppProgressBar()
+  try {
+    const res = await jumpCutMedia({
+      ...opts,
+      jobId,
+      onProgress: (percent, timemark) => {
+        send('job:progress', { jobId, percent, timemark })
+        if (typeof percent === 'number') {
+          singleJobProgress.set(jobId, Math.min(100, Math.max(0, percent)))
+          updateAppProgressBar()
+        }
+      }
+    })
+    allowMedia(res.output)
+    const name = path.basename(res.output)
+    notify('智能跳剪完成', `${name} 已切除 ${res.cutCount} 处空白（节省 ${res.savedSec.toFixed(1)} 秒）`, res.output)
+    afterFinish(res.output)
+    return { ok: true, ...res }
+  } catch (err: any) {
+    const job = err instanceof JobFailedError ? err.job : mapError(err)
+    if (job.code !== 'CANCELLED') notify('智能跳剪失败', `${path.basename(opts.input)}：${job.message}`)
+    return { ok: false, error: job.message }
+  } finally {
+    singleJobs.delete(jobId)
+    singleJobProgress.delete(jobId)
+    updateAppProgressBar()
+  }
+})
+
+ipcMain.handle('media:reframe', async (_e, opts: ReframeParams): Promise<{ ok: boolean; output?: string; size?: number; error?: string }> => {
+  const jobId = opts.jobId || `reframe_${Date.now()}`
+  const ctrl = new AbortController()
+  singleJobs.set(jobId, ctrl)
+  singleJobProgress.set(jobId, 1)
+  updateAppProgressBar()
+  try {
+    const res = await reframeToVertical({
+      ...opts,
+      jobId,
+      onProgress: (percent, timemark) => {
+        send('job:progress', { jobId, percent, timemark })
+        if (typeof percent === 'number') {
+          singleJobProgress.set(jobId, Math.min(100, Math.max(0, percent)))
+          updateAppProgressBar()
+        }
+      }
+    })
+    allowMedia(res.output)
+    const name = path.basename(res.output)
+    notify('竖屏重构完成', `${name} (${formatSize(res.size)})`, res.output)
+    afterFinish(res.output)
+    return { ok: true, ...res }
+  } catch (err: any) {
+    const job = err instanceof JobFailedError ? err.job : mapError(err)
+    if (job.code !== 'CANCELLED') notify('竖屏重构失败', `${path.basename(opts.input)}：${job.message}`)
+    return { ok: false, error: job.message }
+  } finally {
+    singleJobs.delete(jobId)
+    singleJobProgress.delete(jobId)
+    updateAppProgressBar()
   }
 })
 

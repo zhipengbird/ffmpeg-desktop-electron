@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   EncoderInfo, JobResult, ProgressEvent, QueueKind, QueueSnapshot, Settings
 } from '../shared/types'
+import type { SilenceDetectResult } from './core/smart'
 
 type Filters = { name: string; extensions: string[] }[]
 
@@ -38,6 +39,12 @@ const api = {
     ipcRenderer.invoke('media:waveform', { input, bars }) as Promise<number[]>,
   contactSheet: (opts: { input: string; rows?: number; cols?: number; showTimecode?: boolean }) =>
     ipcRenderer.invoke('media:contactSheet', opts) as Promise<{ output: string; size: number; thumbUrl: string }>,
+  detectSilence: (opts: { input: string; thresholdDb?: number; minDuration?: number }) =>
+    ipcRenderer.invoke('media:detectSilence', opts) as Promise<SilenceDetectResult>,
+  jumpCut: (opts: { jobId: string; input: string; output?: string; thresholdDb?: number; minDuration?: number; paddingSec?: number }) =>
+    ipcRenderer.invoke('media:jumpCut', opts) as Promise<{ ok: boolean; output?: string; size?: number; cutCount?: number; savedSec?: number; error?: string }>,
+  reframe: (opts: { jobId: string; input: string; output?: string; width?: number; height?: number; blurRadius?: number }) =>
+    ipcRenderer.invoke('media:reframe', opts) as Promise<{ ok: boolean; output?: string; size?: number; error?: string }>,
   onProgress: (cb: (e: ProgressEvent) => void) => listen<ProgressEvent>('job:progress', cb),
 
   queue: {

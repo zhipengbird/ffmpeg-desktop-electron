@@ -663,6 +663,65 @@ await test('真实声波峰值起伏提取 (extractAudioWaveform 毫秒级提取
   return `成功提取 80 个归一化波形点，最大峰值=${Math.max(...peaks)}`
 })
 
+// ---------- 阶段四：智能剪辑工作流冒烟测试 ----------
+const speechSilenceVideo = path.join(work, 'speech_silence.mp4')
+ff([
+  '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=25:duration=4',
+  '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+  '-f', 'lavfi', '-i', 'aevalsrc=0:d=1.5',
+  '-f', 'lavfi', '-i', 'sine=frequency=880:duration=1.5',
+  '-filter_complex', '[1:a][2:a][3:a]concat=n=3:v=0:a=1[aout]',
+  '-map', '0:v', '-map', '[aout]',
+  '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac',
+  speechSilenceVideo
+])
+
+await test('智能静音停顿极速检测 (detectSilence)', async () => {
+  const r = await core.detectSilence(speechSilenceVideo, { thresholdDb: -30, minDuration: 0.5 })
+  assert(r.totalDuration >= 3.8, `总时长读取不正确: ${r.totalDuration}`)
+  assert(r.silenceCount >= 1, `未能检测到中间 1.5s 的静音空白: count=${r.silenceCount}`)
+  assert(r.silences.length >= 1, 'silences 数组为空')
+  const s0 = r.silences[0]
+  approx(s0.start, 1.0, 0.2, '静音起始点')
+  assert(r.speechSegments.length >= 2, `说话片段数量应至少为 2，实际为 ${r.speechSegments.length}`)
+  return `成功探测出 ${r.silenceCount} 处静音停顿，累计停顿=${r.totalSilenceDuration}s，节省=${r.savedPercent}%`
+})
+
+await test('智能跳剪自动切除空白停顿与流式拼接成片 (jumpCutMedia)', async () => {
+  const out = path.join(work, 'jumpcut_out.mp4')
+  const r = await core.jumpCutMedia({
+    input: speechSilenceVideo,
+    output: out,
+    thresholdDb: -30,
+    minDuration: 0.5,
+    paddingSec: 0.05
+  })
+  assert(fs.existsSync(r.output), '跳剪成片未生成')
+  assert(r.size > 1000, '跳剪成片文件过小')
+  const p = probe(r.output)
+  // 原视频 4 秒，中间 1.5 秒静音被切除后，时长应在 2.5s 左右
+  approx(p.duration, 2.7, 0.4, '跳剪后视频时长')
+  return `原长 4.0s ➔ 跳剪成片 ${p.duration.toFixed(2)}s (切除 ${r.cutCount} 处空白，成片大小=${(r.size / 1024).toFixed(1)} KB)`
+})
+
+await test('16:9 横转 9:16 竖屏短视频智能重构与动态高斯模糊填底 (reframeToVertical)', async () => {
+  const out = path.join(work, 'reframe_vertical.mp4')
+  const r = await core.reframeToVertical({
+    input: sampleMp4,
+    output: out,
+    width: 720,
+    height: 1280,
+    blurRadius: 20
+  })
+  assert(fs.existsSync(r.output), '竖屏重构文件未生成')
+  assert(r.size > 1000, '竖屏重构文件过小')
+  const p = probe(r.output)
+  assert(p.v && p.v.width === 720 && p.v.height === 1280, `输出分辨率非 720x1280，实际为 ${p.v?.width}x${p.v?.height}`)
+  assert(p.a, '竖屏视频缺少音轨')
+  return `成功将 16:9 重构为 9:16 竖屏视频：${p.v.width}x${p.v.height}，背景动态高斯模糊已融合`
+})
+
+
 // =====================================================
 const failed = results.filter((r) => !r.ok)
 console.log(`\n结果：${results.length - failed.length}/${results.length} 通过${failed.length ? `，失败：\n - ${failed.map((f) => `${f.name}: ${f.note}`).join('\n - ')}` : ''}`)
