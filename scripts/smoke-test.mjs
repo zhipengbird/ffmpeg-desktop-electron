@@ -168,6 +168,12 @@ await test('提取音频（MP3，无视频流）', async () => {
   const p = probe(out)
   assert(p.a?.codec_name === 'mp3' && !p.v, '流不符')
 })
+await test('提取原音频（流复制 AAC ➔ .m4a，零损耗）', async () => {
+  const out = path.join(work, 'sep_raw.m4a')
+  await core.separateStreams({ jobId: nextJob(), input: sampleMp4, output: out, mode: 'audio-copy' })
+  const p = probe(out)
+  assert(p.a?.codec_name === 'aac' && !p.v, '流不符')
+})
 await test('提取无声视频（流复制，无音频流）', async () => {
   const out = path.join(work, 'sep_silent.mp4')
   await core.separateStreams({ jobId: nextJob(), input: sampleMp4, output: out, mode: 'video' })
