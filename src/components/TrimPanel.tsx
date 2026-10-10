@@ -152,6 +152,13 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
     setLooping(false)
     setPlaying(false)
     setFile(null)
+    setUrl(null)
+    setPreview('idle')
+    setCurrent(0)
+    setStart(0)
+    setEnd(0)
+    setDuration(0)
+    setProbeError(null)
     job.reset()
   }, [job])
 

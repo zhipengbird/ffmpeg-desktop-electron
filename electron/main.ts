@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol, Notification } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, Notification, nativeImage } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { Readable } from 'stream'
@@ -152,10 +152,12 @@ const env: TaskEnv = {
 }
 
 const queues = new Map<QueueKind, TaskQueue<any>>()
+// 单文件任务（裁剪）
+const singleJobs = new Map<string, AbortController>()
+const singleJobProgress = new Map<string, number>()
 
 function updateAppProgressBar(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  let anyRunning = false
   let anyError = false
   let completed = 0
   let total = 0
@@ -163,7 +165,6 @@ function updateAppProgressBar(): void {
 
   for (const [, q] of queues) {
     const s = q.snapshot()
-    if (s.running) anyRunning = true
     for (const it of s.items) {
       total++
       if (it.status === 'done' || it.status === 'skipped') {
@@ -177,16 +178,32 @@ function updateAppProgressBar(): void {
     }
   }
 
-  if (singleJobs.size > 0) {
-    anyRunning = true
+  // 纯单任务场景（如无批量队列，只有单个剪辑任务）
+  if (total === 0) {
+    if (singleJobs.size === 0) {
+      mainWindow.setProgressBar(-1)
+      return
+    }
+    let sum = 0
+    for (const p of singleJobProgress.values()) sum += p
+    const avg = singleJobProgress.size > 0 ? (sum / singleJobProgress.size) / 100 : 0.01
+    const ratio = Math.min(0.99, Math.max(0.01, avg))
+    mainWindow.setProgressBar(ratio)
+    return
   }
 
-  if (!anyRunning || total === 0) {
+  // 批量任务场景（可同时混合单任务）
+  let singleSum = 0
+  for (const p of singleJobProgress.values()) singleSum += p / 100
+  const grandTotal = total + singleJobs.size
+  const grandCompleted = completed + runningProgress + singleSum
+
+  if (grandCompleted <= 0 && singleJobs.size === 0 && completed === 0) {
     mainWindow.setProgressBar(-1)
     return
   }
 
-  const ratio = Math.min(0.99, Math.max(0.01, (completed + runningProgress) / total))
+  const ratio = Math.min(0.99, Math.max(0.01, grandCompleted / grandTotal))
   try {
     mainWindow.setProgressBar(ratio, { mode: anyError ? 'error' : 'normal' })
   } catch {
@@ -337,12 +354,24 @@ ipcMain.handle('shell:showItem', async (_e, targetPath: string) => {
 
 ipcMain.on('shell:startDrag', (event, targetPath: string) => {
   if (!targetPath || typeof targetPath !== 'string' || !fs.existsSync(targetPath)) return
-  const iconCandidate = path.join(__dirname, '../resources/icon-512.png')
-  const icon = fs.existsSync(iconCandidate) ? iconCandidate : path.join(__dirname, '../resources/icon.png')
-  event.sender.startDrag({
-    file: targetPath,
-    icon
-  })
+  try {
+    const iconCandidate = path.join(__dirname, '../resources/icon-512.png')
+    const fallbackIcon = path.join(__dirname, '../resources/icon.png')
+    let dragIcon: string | Electron.NativeImage
+    if (fs.existsSync(iconCandidate)) {
+      dragIcon = iconCandidate
+    } else if (fs.existsSync(fallbackIcon)) {
+      dragIcon = fallbackIcon
+    } else {
+      dragIcon = nativeImage.createEmpty()
+    }
+    event.sender.startDrag({
+      file: targetPath,
+      icon: dragIcon
+    })
+  } catch (err) {
+    console.warn('[startDrag] 失败:', err)
+  }
 })
 
 ipcMain.handle('fs:stat', async (_e, p: string) => {
@@ -384,17 +413,19 @@ ipcMain.handle('media:allow', (_e, filePath: string) => {
   return pathToMediaUrl(filePath)
 })
 
-// 单文件任务（裁剪）
-const singleJobs = new Map<string, AbortController>()
+// 单文件任务（裁剪）- 已提前声明 singleJobs 与 singleJobProgress
 
 ipcMain.handle('job:cancel', async (_e, jobId: string) => {
   singleJobs.get(jobId)?.abort()
+  singleJobProgress.delete(jobId)
+  updateAppProgressBar()
   return cancelJob(jobId)
 })
 
 ipcMain.handle('media:trim', async (_e, opts: { jobId: string; input: string } & TrimParams): Promise<JobResult> => {
   const ctrl = new AbortController()
   singleJobs.set(opts.jobId, ctrl)
+  singleJobProgress.set(opts.jobId, 1)
   updateAppProgressBar()
   try {
     const res = await trimTask(opts.input, { start: opts.start, end: opts.end, mode: opts.mode }, {
@@ -403,7 +434,8 @@ ipcMain.handle('media:trim', async (_e, opts: { jobId: string; input: string } &
       onProgress: (percent, timemark) => {
         send('job:progress', { jobId: opts.jobId, percent, timemark })
         if (typeof percent === 'number') {
-          mainWindow?.setProgressBar(Math.min(0.99, Math.max(0.01, percent / 100)))
+          singleJobProgress.set(opts.jobId, Math.min(100, Math.max(0, percent)))
+          updateAppProgressBar()
         }
       }
     }, env)
@@ -420,6 +452,7 @@ ipcMain.handle('media:trim', async (_e, opts: { jobId: string; input: string } &
     return { ok: false, error: job }
   } finally {
     singleJobs.delete(opts.jobId)
+    singleJobProgress.delete(opts.jobId)
     updateAppProgressBar()
   }
 })

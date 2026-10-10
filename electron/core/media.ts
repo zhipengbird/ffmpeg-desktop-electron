@@ -227,7 +227,7 @@ export async function separateStreams(o: SeparateOpts): Promise<MediaOpResult> {
   if (o.mode === 'audio-copy') {
     if (info && !info.audio) throw new JobFailedError({ code: 'FORMAT', message: '该文件没有音频流，无法提取音频' })
     await withTempOutput(o.output, (tmp) => runFfmpeg({
-      jobId: o.jobId, args: ['-i', o.input, '-vn', '-sn', '-c:a', 'copy', tmp], duration, onProgress: o.onProgress
+      jobId: o.jobId, args: ['-i', o.input, '-map', '0:a:0?', '-vn', '-sn', '-c:a', 'copy', tmp], duration, onProgress: o.onProgress
     }))
     return { output: o.output }
   }
