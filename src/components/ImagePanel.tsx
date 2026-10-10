@@ -1,105 +1,67 @@
 import { useState } from 'react'
 import FileDropzone from './FileDropzone'
-import ProgressBar from './ProgressBar'
-import ResultBanner from './ResultBanner'
-import { useJob } from '../hooks/useJob'
+import BatchQueue from './BatchQueue'
+import OutputHint from './OutputHint'
+import PresetGroup from './PresetGroup'
+import { useQueue } from '../hooks/useQueue'
 
 const PRESETS = [
-  { id: 'high', label: '高质量' },
-  { id: 'balanced', label: '平衡' },
-  { id: 'small', label: '小体积' }
+  { id: 'high', label: '高质量', desc: '质量 90；PNG 无损最大压缩' },
+  { id: 'balanced', label: '平衡', desc: '质量 75；PNG 调色板量化' },
+  { id: 'small', label: '小体积', desc: '质量 50；PNG 调色板量化' }
 ] as const
 
-export default function ImagePanel() {
-  const [file, setFile] = useState<string | null>(null)
+type Fmt = 'keep' | 'jpeg' | 'png' | 'webp'
+
+export default function ImagePanel({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [preset, setPreset] = useState<'high' | 'balanced' | 'small'>('balanced')
-  const [format, setFormat] = useState<'jpeg' | 'png' | 'webp'>('jpeg')
+  const [format, setFormat] = useState<Fmt>('keep')
   const [useCustom, setUseCustom] = useState(false)
   const [quality, setQuality] = useState(75)
-  const job = useJob()
-
-  const run = async () => {
-    if (!file) return
-    const jobId = job.start()
-    const res = await window.api.compressImage({
-      jobId,
-      input: file,
-      preset,
-      format,
-      customQuality: useCustom ? quality : undefined
-    })
-    if (res.ok && res.output) {
-      job.finish(true, `图片压缩完成：${res.output}`, res.output)
-    } else {
-      job.finish(false, res.error || '压缩失败')
-    }
-  }
+  const queue = useQueue('image')
+  const invalid = useCustom && (!Number.isInteger(quality) || quality < 1 || quality > 100)
 
   return (
     <>
-      <FileDropzone
-        file={file}
-        onFile={(p) => { setFile(p); job.reset() }}
-        onClear={() => { setFile(null); job.reset() }}
-        extensions={['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']}
-        hint="支持 JPG / PNG / WebP / GIF / BMP"
-      />
+      <FileDropzone multiple onFiles={queue.add} extensions={['jpg', 'jpeg', 'png', 'webp', 'gif', 'tif', 'tiff', 'avif']}
+        hint="支持 JPG / PNG / WebP / GIF / TIFF / AVIF，可多选" compact={queue.snap.items.length > 0} />
 
       <div className="panel">
         <div className="panel-title">压缩参数</div>
         <div className="form-row">
           <div className="form-group">
             <label>预设</label>
-            <div className="preset-group">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.id}
-                  className={`preset-btn ${preset === p.id ? 'active' : ''}`}
-                  onClick={() => setPreset(p.id)}
-                  disabled={job.running}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <PresetGroup options={PRESETS} value={preset} onChange={setPreset} />
           </div>
           <div className="form-group">
             <label>输出格式</label>
-            <select value={format} onChange={(e) => setFormat(e.target.value as 'jpeg' | 'png' | 'webp')} disabled={job.running}>
+            <select value={format} onChange={(e) => setFormat(e.target.value as Fmt)}>
+              <option value="keep">保持原格式</option>
               <option value="jpeg">JPEG</option>
               <option value="png">PNG</option>
               <option value="webp">WebP</option>
             </select>
           </div>
         </div>
-
         <div className="form-row">
           <label className="check-row">
-            <input type="checkbox" checked={useCustom} onChange={(e) => setUseCustom(e.target.checked)} disabled={job.running} />
+            <input type="checkbox" checked={useCustom} onChange={(e) => setUseCustom(e.target.checked)} />
             自定义质量（1–100）
           </label>
-        </div>
-
-        {useCustom && (
-          <div className="form-row">
-            <div className="form-group">
-              <label>质量</label>
-              <input type="number" min={1} max={100} value={quality} onChange={(e) => setQuality(Number(e.target.value))} disabled={job.running} />
+          {useCustom && (
+            <div className="form-group inline">
+              <input type="range" min={1} max={100} value={quality} onChange={(e) => setQuality(Number(e.target.value))} />
+              <input type="number" min={1} max={100} value={quality} onChange={(e) => setQuality(Number(e.target.value))} className={invalid ? 'invalid' : ''} style={{ width: 72 }} />
             </div>
-          </div>
-        )}
-
-        <div className="actions">
-          {!job.running ? (
-            <button className="btn btn-primary" disabled={!file} onClick={run}>开始压缩</button>
-          ) : (
-            <button className="btn btn-danger" onClick={job.cancel}>取消</button>
           )}
         </div>
-
-        {job.running && <ProgressBar percent={job.percent} />}
-        {job.result && <ResultBanner ok={job.result.ok} message={job.result.message} output={job.result.output} />}
+        <OutputHint onOpenSettings={onOpenSettings} />
+        {!queue.snap.items.length && <div className="empty-tip">添加图片后，在下方任务列表中点击「全部开始」。</div>}
       </div>
+
+      <BatchQueue queue={queue} concurrencyKey="imageConcurrency" startLabel="全部开始"
+        startDisabledReason={invalid ? '质量需为 1–100 的整数' : undefined}
+        onStartAll={() => queue.start({ preset, format, customQuality: useCustom ? quality : undefined })} />
     </>
   )
 }

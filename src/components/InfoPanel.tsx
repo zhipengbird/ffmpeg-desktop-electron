@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import FileDropzone from './FileDropzone'
+import ErrorCard from './ErrorCard'
 import { formatBitrate, formatDuration, formatSize, isImage } from '../utils/format'
 
 interface InfoItem {
@@ -11,18 +12,21 @@ export default function InfoPanel() {
   const [file, setFile] = useState<string | null>(null)
   const [items, setItems] = useState<InfoItem[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [detail, setDetail] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const load = async (p: string) => {
     setFile(p)
     setLoading(true)
     setError(null)
+    setDetail(null)
     setItems([])
     try {
       if (isImage(p)) {
         const info = await window.api.imageInfo(p)
         if ('error' in info) {
           setError(String(info.error))
+          setDetail(info.detail ? String(info.detail) : null)
           return
         }
         setItems([
@@ -35,6 +39,7 @@ export default function InfoPanel() {
         const info = await window.api.probe(p)
         if ('error' in info) {
           setError(String(info.error))
+          setDetail(info.detail ? String(info.detail) : null)
           return
         }
         const list: InfoItem[] = [
@@ -74,18 +79,13 @@ export default function InfoPanel() {
     <>
       <FileDropzone
         file={file}
-        onFile={load}
+        onFiles={(ps) => load(ps[0])}
         onClear={() => { setFile(null); setItems([]); setError(null) }}
         hint="选择任意音视频或图片查看详细信息"
       />
 
       {loading && <p style={{ marginTop: 16, color: 'var(--text-muted)' }}>正在读取媒体信息…</p>}
-      {error && (
-        <div className="result-banner err" style={{ marginTop: 16 }}>
-          <span>✕</span>
-          <div className="msg">{error}</div>
-        </div>
-      )}
+      {error && <ErrorCard error={{ code: 'FORMAT', message: error, detail: detail || undefined }} />}
 
       {items.length > 0 && (
         <div className="panel">

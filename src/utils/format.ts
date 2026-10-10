@@ -1,10 +1,4 @@
-export function formatSize(bytes: number): string {
-  if (!bytes || bytes < 0) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
+export { formatSize, formatChange, showInFolderLabel } from '../../shared/format'
 
 export function formatDuration(seconds: number): string {
   if (!seconds || seconds < 0) return '00:00'
@@ -35,11 +29,11 @@ export function extname(p: string): string {
 }
 
 export function isImage(p: string): boolean {
-  return ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(extname(p))
+  return ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tif', '.tiff', '.avif'].includes(extname(p))
 }
 
 export function isAudio(p: string): boolean {
-  return ['.mp3', '.aac', '.wav', '.flac', '.m4a', '.ogg', '.wma'].includes(extname(p))
+  return ['.mp3', '.aac', '.wav', '.flac', '.m4a', '.ogg', '.opus', '.wma'].includes(extname(p))
 }
 
 export function isVideo(p: string): boolean {
@@ -48,4 +42,28 @@ export function isVideo(p: string): boolean {
 
 export function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+/** 精确时间：HH:MM:SS.mmm（不足 1 小时显示 MM:SS.mmm） */
+export function formatPreciseTime(sec: number): string {
+  const s = Math.max(0, Number.isFinite(sec) ? sec : 0)
+  const totalMs = Math.round(s * 1000)
+  const h = Math.floor(totalMs / 3600000)
+  const m = Math.floor((totalMs % 3600000) / 60000)
+  const ss = Math.floor((totalMs % 60000) / 1000)
+  const ms = totalMs % 1000
+  const core = `${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(ms).padStart(3, '0')}`
+  return h > 0 ? `${String(h).padStart(2, '0')}:${core}` : core
+}
+
+/** 解析 “时:分:秒.毫秒” / “分:秒” / “秒” → 秒；非法返回 NaN */
+export function parseTime(v: string): number {
+  const t = v.trim()
+  if (!t) return NaN
+  const parts = t.split(':')
+  if (parts.length > 3 || parts.some((p) => !/^\d+(\.\d+)?$/.test(p.trim()))) return NaN
+  const nums = parts.map((p) => parseFloat(p))
+  if (nums.length === 3) return nums[0] * 3600 + nums[1] * 60 + nums[2]
+  if (nums.length === 2) return nums[0] * 60 + nums[1]
+  return nums[0]
 }

@@ -1,84 +1,62 @@
 import { useState } from 'react'
 import FileDropzone from './FileDropzone'
-import ProgressBar from './ProgressBar'
-import ResultBanner from './ResultBanner'
-import { useJob } from '../hooks/useJob'
-import { isAudio, isVideo } from '../utils/format'
+import BatchQueue from './BatchQueue'
+import OutputHint from './OutputHint'
+import { useQueue } from '../hooks/useQueue'
+import { isAudio } from '../utils/format'
 
 const VIDEO_FORMATS = ['mp4', 'mkv', 'webm']
 const AUDIO_FORMATS = ['mp3', 'aac', 'wav']
 
-export default function ConvertPanel() {
-  const [file, setFile] = useState<string | null>(null)
+export default function ConvertPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [format, setFormat] = useState('mp4')
-  const job = useJob()
+  const queue = useQueue('convert')
+  const pendingInputs = queue.snap.items.filter((i) => i.status === 'pending').map((i) => i.input)
+  const hasAudioInput = pendingInputs.some(isAudio)
+  const videoTarget = VIDEO_FORMATS.includes(format)
+  const reason = hasAudioInput && videoTarget ? '列表中包含纯音频文件，无法转换为视频格式；请选择音频格式或移除这些文件' : undefined
 
-  const formats = file && isAudio(file) ? AUDIO_FORMATS : [...VIDEO_FORMATS, ...AUDIO_FORMATS]
-
-  const onFile = (p: string) => {
-    setFile(p)
-    job.reset()
-    if (isAudio(p) && VIDEO_FORMATS.includes(format)) setFormat('mp3')
-  }
-
-  const run = async () => {
-    if (!file) return
-    const jobId = job.start()
-    const res = await window.api.convert({ jobId, input: file, format })
-    if (res.ok && res.output) {
-      job.finish(true, `转换完成：${res.output}`, res.output)
-    } else {
-      job.finish(false, res.error || '转换失败')
-    }
+  const onFiles = (paths: string[]) => {
+    queue.add(paths)
+    if (paths.length && paths.every(isAudio) && videoTarget && !queue.snap.items.length) setFormat('mp3')
   }
 
   return (
     <>
-      <FileDropzone
-        file={file}
-        onFile={onFile}
-        onClear={() => { setFile(null); job.reset() }}
-        extensions={['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'mp3', 'aac', 'wav', 'm4a', 'flac']}
-        hint="视频可转为 mp4/mkv/webm 或提取为音频；音频可转为 mp3/aac/wav"
-      />
+      <FileDropzone multiple onFiles={onFiles}
+        extensions={['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'm4v', 'wmv', 'mp3', 'aac', 'wav', 'm4a', 'flac', 'ogg', 'opus']}
+        hint="视频可转为 MP4/MKV/WebM 或提取为音频；音频可转为 MP3/AAC/WAV；可多选" compact={queue.snap.items.length > 0} />
 
       <div className="panel">
         <div className="panel-title">目标格式</div>
         <div className="form-row">
           <div className="form-group">
-            <label>输出格式</label>
+            <label>视频</label>
             <div className="preset-group">
-              {formats.map((f) => (
-                <button
-                  key={f}
-                  className={`preset-btn ${format === f ? 'active' : ''}`}
-                  onClick={() => setFormat(f)}
-                  disabled={job.running}
-                >
-                  {f.toUpperCase()}
-                </button>
+              {VIDEO_FORMATS.map((f) => (
+                <button key={f} className={`preset-btn ${format === f ? 'active' : ''}`} onClick={() => setFormat(f)}>{f.toUpperCase()}</button>
+              ))}
+            </div>
+          </div>
+          <div className="form-group">
+            <label>音频</label>
+            <div className="preset-group">
+              {AUDIO_FORMATS.map((f) => (
+                <button key={f} className={`preset-btn ${format === f ? 'active' : ''}`} onClick={() => setFormat(f)}>{f.toUpperCase()}</button>
               ))}
             </div>
           </div>
         </div>
-
-        {file && isVideo(file) && AUDIO_FORMATS.includes(format) && (
-          <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
-            将从视频中提取音频并转换为 {format.toUpperCase()}
-          </p>
-        )}
-
-        <div className="actions">
-          {!job.running ? (
-            <button className="btn btn-primary" disabled={!file} onClick={run}>开始转换</button>
-          ) : (
-            <button className="btn btn-danger" onClick={job.cancel}>取消</button>
-          )}
-        </div>
-
-        {job.running && <ProgressBar percent={job.percent} timemark={job.timemark} />}
-        {job.result && <ResultBanner ok={job.result.ok} message={job.result.message} output={job.result.output} />}
+        <p className="muted-note">
+          {format === 'webm' ? 'WebM 使用 VP9 + Opus 编码（较慢，不支持硬件加速）。'
+            : videoTarget ? `${format.toUpperCase()} 使用 H.264 + AAC 编码，可在设置中开启硬件加速。`
+            : `将提取音频并转换为 ${format.toUpperCase()}。`}
+        </p>
+        <OutputHint video={format === 'mp4' || format === 'mkv'} onOpenSettings={onOpenSettings} />
       </div>
+
+      <BatchQueue queue={queue} concurrencyKey="concurrency" startLabel="全部开始" startDisabledReason={reason}
+        onStartAll={() => queue.start({ format })} />
     </>
   )
 }
