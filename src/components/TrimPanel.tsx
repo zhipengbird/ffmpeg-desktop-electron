@@ -147,12 +147,57 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
     showFeedback(`🏁 终点已设为 ${formatPreciseTime(val)}`)
   }, [current, start, showFeedback])
 
-  // 键盘快捷键：I/[ 起点 / O/] 终点 / 空格 播放暂停 / ←→ 微调 / Esc 取消
+  const clear = useCallback(() => {
+    mediaRef.current?.pause()
+    setLooping(false)
+    setPlaying(false)
+    setFile(null)
+    job.reset()
+  }, [job])
+
+  // 键盘快捷键：I/[ 起点 / O/] 终点 / 空格 播放暂停 / ←→ 微调 / Esc 分层取消
   // 采用 e.code (物理键码) + e.key 兜底，完美兼容中文输入法环境（如输入法打出【】）
   useEffect(() => {
-    if (!file || duration <= 0 || !active) return
+    if (!active) return
     const onKey = (e: KeyboardEvent) => {
+      const isEsc = e.key === 'Escape' || e.code === 'Escape'
+      if (isEsc) {
+        e.preventDefault()
+        // 1. 如果正在文本输入框内，按 Esc 优先失焦退出编辑
+        if (isTypingTarget(e.target)) {
+          ;(e.target as HTMLElement).blur()
+          return
+        }
+        // 2. 如果任务正在运行，取消任务
+        if (job.running) {
+          void job.cancel()
+          showFeedback('⏹ 正在取消任务…')
+          return
+        }
+        // 3. 如果正在循环选区或播放，暂停并退出预览
+        if (looping || playing) {
+          mediaRef.current?.pause()
+          setLooping(false)
+          setPlaying(false)
+          showFeedback('⏸ 已暂停预览')
+          return
+        }
+        // 4. 如果已有结果或错误卡片，按 Esc 清除结果提示
+        if (job.result) {
+          job.reset()
+          return
+        }
+        // 5. 如果已加载文件，按 Esc 清空退出当前文件返回选择页
+        if (file) {
+          clear()
+          showFeedback('✕ 已清空当前文件')
+        }
+        return
+      }
+
+      if (!file || duration <= 0) return
       if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
+
       const k = e.key.toLowerCase()
       const isMarkIn = e.code === 'BracketLeft' || e.code === 'KeyI' || e.key === '[' || e.key === '【' || k === 'i'
       const isMarkOut = e.code === 'BracketRight' || e.code === 'KeyO' || e.key === ']' || e.key === '】' || k === 'o'
@@ -163,9 +208,6 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
       } else if (isMarkOut) {
         e.preventDefault()
         markOut()
-      } else if (e.key === 'Escape' && job.running) {
-        e.preventDefault()
-        job.cancel()
       } else if (e.code === 'Space') {
         e.preventDefault()
         // 避免焦点按钮在 keyup 时再次被“点击”
@@ -183,7 +225,7 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
       window.removeEventListener('keydown', onKey)
       if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
     }
-  }, [file, duration, markIn, markOut, togglePlay, seek, current, active, job])
+  }, [file, duration, markIn, markOut, togglePlay, seek, current, active, job, looping, playing, clear, showFeedback])
 
   // 切换到其他标签时暂停预览
   useEffect(() => {
@@ -199,8 +241,6 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
     const res = await window.api.trim({ jobId, input: file, start, end, mode })
     job.finish(res)
   }
-
-  const clear = () => { mediaRef.current?.pause(); setFile(null); job.reset() }
   const segLen = Math.max(0, end - start)
   const audioOnly = file ? (!hasVideo || isAudio(file)) : false
   const rangeInvalid = !(end > start) || (duration > 0 && end > duration + 0.001)
@@ -282,7 +322,7 @@ export default function TrimPanel({ onOpenSettings, active }: { onOpenSettings: 
               <div className="static-value">{formatPreciseTime(segLen)}</div>
             </div>
           </div>
-          <div className="shortcut-tip">快捷键：<kbd>I</kbd> 或 <kbd>[</kbd> 将播放头设为起点 · <kbd>O</kbd> 或 <kbd>]</kbd> 设为终点 · <kbd>空格</kbd> 播放/暂停 · <kbd>←</kbd><kbd>→</kbd> 微调 · <kbd>Esc</kbd> 取消</div>
+          <div className="shortcut-tip">快捷键：<kbd>I</kbd> 或 <kbd>[</kbd> 将播放头设为起点 · <kbd>O</kbd> 或 <kbd>]</kbd> 设为终点 · <kbd>空格</kbd> 播放/暂停 · <kbd>←</kbd><kbd>→</kbd> 微调 · <kbd>Esc</kbd> 停止/取消/清空</div>
         </div>
       )}
 
