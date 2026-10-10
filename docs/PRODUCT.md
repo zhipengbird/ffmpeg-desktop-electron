@@ -98,6 +98,6 @@
 
 ## 🧭 文档索引导航
 
-* 📘 **功能演进路线图**：[ROADMAP.md](file:///Users/yuanpinghua/Desktop/%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE/ffmpeg-desktop-electron/ROADMAP.md)
-* 📝 **版本改动更新日志**：[CHANGELOG.md](file:///Users/yuanpinghua/Desktop/%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE/ffmpeg-desktop-electron/CHANGELOG.md)
-* 🚀 **开发与快速开始**：[README.md](file:///Users/yuanpinghua/Desktop/%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE/ffmpeg-desktop-electron/README.md)
+* 📘 **功能演进路线图**：[ROADMAP.md](./ROADMAP.md)
+* 📝 **版本改动更新日志**：[CHANGELOG.md](./CHANGELOG.md)
+* 🚀 **开发与快速开始**：[README.md](../README.md)

@@ -24,9 +24,9 @@
 - 冒烟测试套件扩展至 **47 项自动化测试**（新增目标体积压制、高清 GIF 调色板生成、Animated WebP 编码验证），持续保持 100% 通过率。
 
 ### 📚 文档体系
-- 新建 [PRODUCT.md](file:///Users/yuanpinghua/Desktop/%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE/ffmpeg-desktop-electron/PRODUCT.md)（产品定位、用户痛点、功能全景图与交互工程细节）；
-- 建立 [CHANGELOG.md](file:///Users/yuanpinghua/Desktop/%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE/ffmpeg-desktop-electron/CHANGELOG.md) 追踪记录每个版本的特性变更与缺陷修复；
-- 在 [ROADMAP.md](file:///Users/yuanpinghua/Desktop/%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE/ffmpeg-desktop-electron/ROADMAP.md) 中细化阶段二能力演进状态。
+- 新建 [PRODUCT.md](./PRODUCT.md)（产品定位、用户痛点、功能全景图与交互工程细节）；
+- 建立 [CHANGELOG.md](./CHANGELOG.md) 追踪记录每个版本的特性变更与缺陷修复；
+- 在 [ROADMAP.md](./ROADMAP.md) 中细化阶段二能力演进状态。
 
 ---
 
