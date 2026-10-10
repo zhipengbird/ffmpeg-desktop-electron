@@ -54,6 +54,8 @@ export default function CompareModal({ original, processed, onClose }: Props) {
   const [currentTime, setCurrentTime] = useState(0)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null)
+  const [videoError, setVideoError] = useState<string | null>(null)
 
   // 1. 初始化元数据与视频播放地址
   useEffect(() => {
@@ -61,13 +63,21 @@ export default function CompareModal({ original, processed, onClose }: Props) {
 
     if (!isImage) {
       // 视频文件：探测时长与获取流式播放地址
-      window.api.probe(original).then((info) => {
+      Promise.all([
+        window.api.probe(original),
+        window.api.probe(processed)
+      ]).then(([info1, info2]) => {
         if (!alive) return
-        const d = typeof info.duration === 'number' ? info.duration : Number(info.duration) || 0
+        const d = typeof info1.duration === 'number' ? info1.duration : Number(info1.duration) || 0
         setDuration(d)
-        // 默认将抽帧时间设定在第 1 秒（若时长小于 1s 则取 0s）
         const initTs = d > 0 && d <= 1 ? 0 : 1
         setSelectedTimestamp(initTs)
+
+        // 优先使用处理后的目标画幅，若无则使用原视频画幅
+        const v = (info2 as any)?.video || (info1 as any)?.video
+        if (v?.width && v?.height) {
+          setAspectRatio(v.width / v.height)
+        }
       }).catch(() => { /* ignore */ })
 
       Promise.all([
@@ -252,6 +262,22 @@ export default function CompareModal({ original, processed, onClose }: Props) {
           </div>
         </div>
 
+        {videoError && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            color: '#fca5a5',
+            borderBottom: '1px solid rgba(239, 68, 68, 0.25)',
+            padding: '8px 16px',
+            fontSize: '12px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span>⚠️ {videoError}</span>
+            <button className="btn btn-ghost btn-xs" style={{ color: '#fff' }} onClick={() => setVideoError(null)}>✕</button>
+          </div>
+        )}
+
         {/* 主画布舞台区 */}
         <div className="compare-modal-body">
           {compareKind === 'static' && loadingFrame && (
@@ -276,6 +302,7 @@ export default function CompareModal({ original, processed, onClose }: Props) {
             <div
               ref={containerRef}
               className={`compare-stage-container ${isDragging ? 'is-dragging' : ''}`}
+              style={{ aspectRatio: aspectRatio ? `${aspectRatio}` : undefined }}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
@@ -288,6 +315,12 @@ export default function CompareModal({ original, processed, onClose }: Props) {
                     src={procThumb}
                     alt="处理后"
                     draggable={false}
+                    onLoad={(e) => {
+                      const img = e.currentTarget
+                      if (img.naturalWidth && img.naturalHeight && !aspectRatio) {
+                        setAspectRatio(img.naturalWidth / img.naturalHeight)
+                      }
+                    }}
                     onError={() => setError('处理后对比画面渲染失败')}
                   />
                   <div className="compare-badge compare-badge-right">处理后 / 压缩后</div>
@@ -306,6 +339,12 @@ export default function CompareModal({ original, processed, onClose }: Props) {
                     src={origThumb}
                     alt="原画"
                     draggable={false}
+                    onLoad={(e) => {
+                      const img = e.currentTarget
+                      if (img.naturalWidth && img.naturalHeight && !aspectRatio) {
+                        setAspectRatio(img.naturalWidth / img.naturalHeight)
+                      }
+                    }}
                     onError={() => setError('源文件对比画面渲染失败')}
                   />
                   <div className="compare-badge compare-badge-left">源文件原画</div>
@@ -333,6 +372,7 @@ export default function CompareModal({ original, processed, onClose }: Props) {
             <div
               ref={containerRef}
               className={`compare-stage-container ${isDragging ? 'is-dragging' : ''}`}
+              style={{ aspectRatio: aspectRatio ? `${aspectRatio}` : undefined }}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
@@ -347,6 +387,15 @@ export default function CompareModal({ original, processed, onClose }: Props) {
                     muted={true}
                     playsInline
                     loop
+                    onLoadedMetadata={(e) => {
+                      const v = e.currentTarget
+                      if (v.videoWidth && v.videoHeight && !aspectRatio) {
+                        setAspectRatio(v.videoWidth / v.videoHeight)
+                      }
+                    }}
+                    onError={() => {
+                      console.warn('处理后视频动态播放失败')
+                    }}
                   />
                   <div className="compare-badge compare-badge-right">处理后 (动态)</div>
                 </div>
@@ -368,6 +417,17 @@ export default function CompareModal({ original, processed, onClose }: Props) {
                     loop
                     onTimeUpdate={handleTimeUpdate}
                     onEnded={() => setIsPlaying(false)}
+                    onLoadedMetadata={(e) => {
+                      const v = e.currentTarget
+                      if (v.videoWidth && v.videoHeight && !aspectRatio) {
+                        setAspectRatio(v.videoWidth / v.videoHeight)
+                      }
+                    }}
+                    onError={() => {
+                      console.warn('源视频动态解码失败，自动切换至单帧高精对比')
+                      setVideoError('源视频格式或超极限画幅（如超 4K 竖屏）超出浏览器动态解码限制，已切换至【像素级单帧细节】对比')
+                      switchMode('static')
+                    }}
                   />
                   <div className="compare-badge compare-badge-left">源文件 (动态)</div>
                 </div>
