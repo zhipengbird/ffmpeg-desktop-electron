@@ -266,12 +266,14 @@ export default function MergePanel({ onOpenSettings }: { onOpenSettings: () => v
             </div>
           </div>
 
-          <div className="setting-row">
-            <div className="setting-text">
-              <div className="setting-title">广播级音量均衡 (EBU R128)</div>
-              <div className="setting-desc">自动标准化响度至 -16 LUFS，消除片段间忽大忽小的音量落差</div>
+          <div className={`feature-toggle-card ${normalizeAudio ? 'active' : ''}`}>
+            <div className="feature-info">
+              <div className="feature-title">
+                <span>🎚️ 广播级音量均衡 (EBU R128)</span>
+              </div>
+              <div className="feature-desc">自动标准化响度至 -16 LUFS，消除片段间忽大忽小的音量落差</div>
             </div>
-            <div className="setting-control">
+            <div className="feature-control">
               <button
                 type="button"
                 role="switch"
@@ -279,6 +281,7 @@ export default function MergePanel({ onOpenSettings }: { onOpenSettings: () => v
                 className={`toggle ${normalizeAudio ? 'on' : ''}`}
                 onClick={() => setNormalizeAudio(!normalizeAudio)}
                 disabled={job.running}
+                title="开启/关闭广播级音量均衡"
               >
                 <span className="knob" />
               </button>

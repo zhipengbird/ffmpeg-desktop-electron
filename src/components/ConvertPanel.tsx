@@ -94,19 +94,33 @@ export default function ConvertPanel({ onOpenSettings }: { onOpenSettings: () =>
           </div>
         )}
 
+        <div className="muted-note">
+          <span className="note-icon">💡</span>
+          <span>
+            {format === 'gif' ? '采用调色板生成与差分抖动引擎（palettegen + paletteuse），画面平滑无噪点，体积紧凑。'
+              : format === 'webp' ? '采用现代 WebP 动画编码引擎（libwebp），支持 1670 万真彩色与平滑循环，体积比 GIF 小 30%～50%。'
+              : format === 'webm' ? 'WebM 使用 VP9 + Opus 编码（较慢，不支持硬件加速）。'
+              : videoTarget ? `${format.toUpperCase()} 使用 H.264 + AAC 编码，可在设置中开启硬件加速。`
+              : `将提取音频并转换为 ${format.toUpperCase()}。`}
+          </span>
+        </div>
+
         {!isAnim && (
-          <div className="setting-row mt-sm">
-            <div className="setting-text">
-              <div className="setting-title">广播级音量标准化 (EBU R128)</div>
-              <div className="setting-desc">将整体响度均衡至 -16 LUFS，消除爆音或微弱人声</div>
+          <div className={`feature-toggle-card ${normalizeAudio ? 'active' : ''}`}>
+            <div className="feature-info">
+              <div className="feature-title">
+                <span>🎚️ 广播级音量标准化 (EBU R128)</span>
+              </div>
+              <div className="feature-desc">将整体响度均衡至 -16 LUFS，消除爆音或微弱人声</div>
             </div>
-            <div className="setting-control">
+            <div className="feature-control">
               <button
                 type="button"
                 role="switch"
                 aria-checked={normalizeAudio}
                 className={`toggle ${normalizeAudio ? 'on' : ''}`}
                 onClick={() => setNormalizeAudio(!normalizeAudio)}
+                title="开启/关闭广播级音量标准化"
               >
                 <span className="knob" />
               </button>
@@ -114,13 +128,6 @@ export default function ConvertPanel({ onOpenSettings }: { onOpenSettings: () =>
           </div>
         )}
 
-        <p className="muted-note">
-          {format === 'gif' ? '✨ 采用调色板生成与差分抖动引擎（palettegen + paletteuse），画面平滑无噪点，体积紧凑。'
-            : format === 'webp' ? '🚀 采用现代 WebP 动画编码引擎（libwebp），支持 1670 万真彩色与平滑循环，体积比 GIF 小 30%～50%。'
-            : format === 'webm' ? 'WebM 使用 VP9 + Opus 编码（较慢，不支持硬件加速）。'
-            : videoTarget ? `${format.toUpperCase()} 使用 H.264 + AAC 编码，可在设置中开启硬件加速。`
-            : `将提取音频并转换为 ${format.toUpperCase()}。`}
-        </p>
         <OutputHint video={format === 'mp4' || format === 'mkv'} onOpenSettings={onOpenSettings} />
       </div>
 

@@ -515,8 +515,7 @@ button {
 
 [hidden] { display: none !important; }
 .spacer { flex: 1; }
-.muted, .muted-note { color: var(--text-muted); }
-.muted-note { font-size: 12px; margin: -4px 0 12px; }
+.muted { color: var(--text-muted); }
 code { font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
 kbd { font-family: var(--mono); font-size: 11px; background: var(--bg); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; margin: 0 2px; color: var(--text); }
 
@@ -640,8 +639,69 @@ input.invalid, .form-group input.invalid { border-color: var(--danger) !importan
 .hw-line { padding: 3px 0; display: flex; align-items: center; gap: 8px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .dot.ok { background: var(--success); }
-.dot.bad { background: var(--danger); }
 .settings-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; font-size: 12px; }
+
+/* feature toggle card & hints */
+.feature-toggle-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-top: 14px;
+  margin-bottom: 14px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.feature-toggle-card:hover {
+  border-color: #384252;
+}
+.feature-toggle-card.active {
+  background: rgba(88, 166, 255, 0.05);
+  border-color: rgba(88, 166, 255, 0.4);
+}
+.feature-toggle-card .feature-info {
+  flex: 1;
+  min-width: 0;
+}
+.feature-toggle-card .feature-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feature-toggle-card .feature-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.feature-toggle-card .feature-control {
+  flex-shrink: 0;
+}
+
+.muted-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 12px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.muted-note .note-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
 
 /* trim */
 .trim-panel { padding-bottom: 14px; }

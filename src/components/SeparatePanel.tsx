@@ -26,27 +26,33 @@ export default function SeparatePanel({ onOpenSettings }: { onOpenSettings: () =
         <div className="form-row">
           <PresetGroup options={MODES} value={mode} onChange={setMode} />
         </div>
-        <p className="muted-note">
-          {mode === 'audio'
-            ? '音频将以 192 kbps 编码为通用 MP3 格式。'
-            : mode === 'audio-copy'
-              ? '直接解封装提取视频中的原音频流（AAC ➔ .m4a、Opus ➔ .opus、FLAC ➔ .flac 等），0.1 秒秒出且音质 100% 无损。'
-              : '视频流直接复制（不重新编码，速度快、无损）；AVI/FLV 等输出为 MKV 以保证兼容。'}
-        </p>
+        <div className="muted-note">
+          <span className="note-icon">💡</span>
+          <span>
+            {mode === 'audio'
+              ? '音频将以 192 kbps 编码为通用 MP3 格式。'
+              : mode === 'audio-copy'
+                ? '直接解封装提取视频中的原音频流（AAC ➔ .m4a、Opus ➔ .opus、FLAC ➔ .flac 等），0.1 秒秒出且音质 100% 无损。'
+                : '视频流直接复制（不重新编码，速度快、无损）；AVI/FLV 等输出为 MKV 以保证兼容。'}
+          </span>
+        </div>
 
         {mode === 'audio' && (
-          <div className="setting-row mt-sm">
-            <div className="setting-text">
-              <div className="setting-title">广播级音量标准化 (EBU R128)</div>
-              <div className="setting-desc">将整体响度均衡至 -16 LUFS，消除爆音或微弱人声</div>
+          <div className={`feature-toggle-card ${normalizeAudio ? 'active' : ''}`}>
+            <div className="feature-info">
+              <div className="feature-title">
+                <span>🎚️ 广播级音量标准化 (EBU R128)</span>
+              </div>
+              <div className="feature-desc">将整体响度均衡至 -16 LUFS，消除爆音或微弱人声</div>
             </div>
-            <div className="setting-control">
+            <div className="feature-control">
               <button
                 type="button"
                 role="switch"
                 aria-checked={normalizeAudio}
                 className={`toggle ${normalizeAudio ? 'on' : ''}`}
                 onClick={() => setNormalizeAudio(!normalizeAudio)}
+                title="开启/关闭广播级音量标准化"
               >
                 <span className="knob" />
               </button>
